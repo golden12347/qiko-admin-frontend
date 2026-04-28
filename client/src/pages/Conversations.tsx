@@ -5,7 +5,7 @@
 // Palette: qiko-navy base, qiko-indigo accents, semantic colors
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,45 +28,18 @@ import {
   Download,
   Filter,
   X,
-  DollarSign,
-  Target,
-  Zap,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  Clock,
 } from "lucide-react";
 import { useLocation } from "wouter";
-import { platformConversations, platformWorkers, customers, type PlatformConversation } from "@/lib/data";
+import { platformConversations, type PlatformConversation } from "@/lib/data";
+import { isDateInGlobalRange, useGlobalDateFilter } from "@/contexts/DateFilterContext";
 
 // ── Style Maps ──────────────────────────────────────────────
-
-const statusStyles: Record<string, string> = {
-  Active: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
-  Completed: "bg-qiko-indigo/15 text-qiko-indigo border-qiko-indigo/20",
-  Escalated: "bg-qiko-warning/15 text-qiko-warning border-qiko-warning/20",
-  Dropped: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
-};
-
-const statusIcons: Record<string, React.ReactNode> = {
-  Active: <Zap className="size-3" />,
-  Completed: <CheckCircle2 className="size-3" />,
-  Escalated: <AlertTriangle className="size-3" />,
-  Dropped: <XCircle className="size-3" />,
-};
-
-const conversionStyles: Record<string, string> = {
-  Converted: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
-  Qualified: "bg-qiko-indigo/15 text-qiko-indigo border-qiko-indigo/20",
-  Nurturing: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/20",
-  Lost: "bg-qiko-error/15 text-qiko-error border-qiko-error/20",
-  None: "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/15",
-};
 
 // ── Sort types ──────────────────────────────────────────────
 
 type SortKey = "id" | "customerName" | "workerName" | "userName" | "channel" | "status" | "conversionStatus" | "revenueOutcome" | "timestamp" | "duration";
 type SortDir = "asc" | "desc";
+const ROWS_PER_PAGE = 10;
 
 function parseDuration(d: string): number {
   const parts = d.match(/(\d+)m\s*(\d+)s/);
@@ -98,40 +71,30 @@ function sortConversations(data: PlatformConversation[], key: SortKey, dir: Sort
 
 export default function Conversations() {
   const [, navigate] = useLocation();
+  const { filter } = useGlobalDateFilter();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [customerFilter, setCustomerFilter] = useState("all");
-  const [workerFilter, setWorkerFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [workerFilter, setWorkerFilter] = useState("");
   const [channelFilter, setChannelFilter] = useState("all");
-  const [conversionFilter, setConversionFilter] = useState("all");
-  const [revenueFilter, setRevenueFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showFilters, setShowFilters] = useState(false);
-
-  const customerNames = useMemo(() => {
-    const names = new Set(platformConversations.map((c) => c.customerName));
-    return Array.from(names).sort();
-  }, []);
-
-  const workerNames = useMemo(() => {
-    const names = new Set(platformConversations.map((c) => c.workerName));
-    return Array.from(names).sort();
-  }, []);
+  const [page, setPage] = useState(1);
+  const dateScopedConversations = useMemo(
+    () => platformConversations.filter((c) => isDateInGlobalRange(c.timestamp, filter)),
+    [filter]
+  );
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (statusFilter !== "all") count++;
-    if (customerFilter !== "all") count++;
-    if (workerFilter !== "all") count++;
+    if (customerFilter.trim()) count++;
+    if (workerFilter.trim()) count++;
     if (channelFilter !== "all") count++;
-    if (conversionFilter !== "all") count++;
-    if (revenueFilter !== "all") count++;
     return count;
-  }, [statusFilter, customerFilter, workerFilter, channelFilter, conversionFilter, revenueFilter]);
+  }, [customerFilter, workerFilter, channelFilter]);
 
   const filtered = useMemo(() => {
-    const result = platformConversations.filter((c) => {
+    const result = dateScopedConversations.filter((c) => {
       const q = search.toLowerCase();
       const matchSearch =
         !q ||
@@ -140,28 +103,26 @@ export default function Conversations() {
         c.workerName.toLowerCase().includes(q) ||
         c.customerName.toLowerCase().includes(q) ||
         c.userId.toLowerCase().includes(q);
-      const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchCustomer = customerFilter === "all" || c.customerName === customerFilter;
-      const matchWorker = workerFilter === "all" || c.workerName === workerFilter;
+      const customerQ = customerFilter.trim().toLowerCase();
+      const workerQ = workerFilter.trim().toLowerCase();
+      const matchCustomer = !customerQ || c.customerName.toLowerCase().includes(customerQ);
+      const matchWorker = !workerQ || c.workerName.toLowerCase().includes(workerQ);
       const matchChannel = channelFilter === "all" || c.channel === channelFilter;
-      const matchConversion = conversionFilter === "all" || c.conversionStatus === conversionFilter;
-      const matchRevenue =
-        revenueFilter === "all" ||
-        (revenueFilter === "has-revenue" && c.revenueOutcome > 0) ||
-        (revenueFilter === "no-revenue" && c.revenueOutcome === 0);
-      return matchSearch && matchStatus && matchCustomer && matchWorker && matchChannel && matchConversion && matchRevenue;
+      return matchSearch && matchCustomer && matchWorker && matchChannel;
     });
     return sortConversations(result, sortKey, sortDir);
-  }, [search, statusFilter, customerFilter, workerFilter, channelFilter, conversionFilter, revenueFilter, sortKey, sortDir]);
+  }, [search, customerFilter, workerFilter, channelFilter, sortKey, sortDir, dateScopedConversations]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * ROWS_PER_PAGE;
+    return filtered.slice(start, start + ROWS_PER_PAGE);
+  }, [filtered, page]);
 
   const stats = useMemo(() => {
-    const total = platformConversations.length;
-    const active = platformConversations.filter((c) => c.status === "Active").length;
-    const converted = platformConversations.filter((c) => c.conversionStatus === "Converted").length;
-    const totalRevenue = platformConversations.reduce((s, c) => s + c.revenueOutcome, 0);
-    const escalated = platformConversations.filter((c) => c.status === "Escalated").length;
-    return { total, active, converted, totalRevenue, escalated };
-  }, []);
+    const total = dateScopedConversations.length;
+    return { total };
+  }, [dateScopedConversations]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -173,14 +134,27 @@ export default function Conversations() {
   }
 
   function clearFilters() {
-    setStatusFilter("all");
-    setCustomerFilter("all");
-    setWorkerFilter("all");
+    setCustomerFilter("");
+    setWorkerFilter("");
     setChannelFilter("all");
-    setConversionFilter("all");
-    setRevenueFilter("all");
     setSearch("");
   }
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    search,
+    customerFilter,
+    workerFilter,
+    channelFilter,
+    sortKey,
+    sortDir,
+    filter,
+  ]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   function SortIcon({ col }: { col: SortKey }) {
     if (sortKey !== col) return <ArrowUpDown className="size-3 opacity-30" />;
@@ -203,35 +177,6 @@ export default function Conversations() {
               <Download className="size-3.5" />
               Export
             </Button>
-          </div>
-        </div>
-
-        {/* KPI strip */}
-        <div className="flex items-center gap-6 mt-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            <MessageSquare className="size-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">Total</span>
-            <span className="font-bold tabular-nums">{stats.total.toLocaleString()}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Zap className="size-3.5 text-qiko-success" />
-            <span className="text-muted-foreground">Active</span>
-            <span className="font-bold text-qiko-success tabular-nums">{stats.active}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Target className="size-3.5 text-qiko-indigo" />
-            <span className="text-muted-foreground">Converted</span>
-            <span className="font-bold text-qiko-indigo tabular-nums">{stats.converted}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <AlertTriangle className="size-3.5 text-qiko-warning" />
-            <span className="text-muted-foreground">Escalated</span>
-            <span className="font-bold text-qiko-warning tabular-nums">{stats.escalated}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <DollarSign className="size-3.5 text-qiko-success" />
-            <span className="text-muted-foreground">Revenue</span>
-            <span className="font-bold text-qiko-success tabular-nums">${stats.totalRevenue.toLocaleString()}</span>
           </div>
         </div>
 
@@ -274,40 +219,18 @@ export default function Conversations() {
         {/* Filter row */}
         {showFilters && (
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger className="w-[160px] h-8 text-xs bg-secondary/30 border-border/30">
-                <SelectValue placeholder="Customer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                {customerNames.map((n) => (
-                  <SelectItem key={n} value={n}>{n}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={workerFilter} onValueChange={setWorkerFilter}>
-              <SelectTrigger className="w-[160px] h-8 text-xs bg-secondary/30 border-border/30">
-                <SelectValue placeholder="Worker" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Workers</SelectItem>
-                {workerNames.map((n) => (
-                  <SelectItem key={n} value={n}>{n}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[130px] h-8 text-xs bg-secondary/30 border-border/30">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-                <SelectItem value="Escalated">Escalated</SelectItem>
-                <SelectItem value="Dropped">Dropped</SelectItem>
-              </SelectContent>
-            </Select>
+            <Input
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+              placeholder="Search customer..."
+              className="w-[180px] h-8 text-xs bg-secondary/30 border-border/30"
+            />
+            <Input
+              value={workerFilter}
+              onChange={(e) => setWorkerFilter(e.target.value)}
+              placeholder="Search worker..."
+              className="w-[180px] h-8 text-xs bg-secondary/30 border-border/30"
+            />
             <Select value={channelFilter} onValueChange={setChannelFilter}>
               <SelectTrigger className="w-[120px] h-8 text-xs bg-secondary/30 border-border/30">
                 <SelectValue placeholder="Channel" />
@@ -316,29 +239,6 @@ export default function Conversations() {
                 <SelectItem value="all">All Channels</SelectItem>
                 <SelectItem value="Web">Web</SelectItem>
                 <SelectItem value="Voice">Voice</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={conversionFilter} onValueChange={setConversionFilter}>
-              <SelectTrigger className="w-[140px] h-8 text-xs bg-secondary/30 border-border/30">
-                <SelectValue placeholder="Conversion" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Conversions</SelectItem>
-                <SelectItem value="Converted">Converted</SelectItem>
-                <SelectItem value="Qualified">Qualified</SelectItem>
-                <SelectItem value="Nurturing">Nurturing</SelectItem>
-                <SelectItem value="Lost">Lost</SelectItem>
-                <SelectItem value="None">None</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={revenueFilter} onValueChange={setRevenueFilter}>
-              <SelectTrigger className="w-[140px] h-8 text-xs bg-secondary/30 border-border/30">
-                <SelectValue placeholder="Revenue" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Revenue</SelectItem>
-                <SelectItem value="has-revenue">Has Revenue</SelectItem>
-                <SelectItem value="no-revenue">No Revenue</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -376,35 +276,15 @@ export default function Conversations() {
                     Channel <SortIcon col="channel" />
                   </button>
                 </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[100px]">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("status")}>
-                    Status <SortIcon col="status" />
-                  </button>
-                </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[110px]">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("conversionStatus")}>
-                    Conversion <SortIcon col="conversionStatus" />
-                  </button>
-                </th>
-                <th className="text-right font-medium text-muted-foreground px-3 py-2.5 w-[100px]">
-                  <button className="flex items-center gap-1 justify-end hover:text-foreground transition-colors" onClick={() => handleSort("revenueOutcome")}>
-                    Revenue <SortIcon col="revenueOutcome" />
-                  </button>
-                </th>
                 <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[140px]">
                   <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("timestamp")}>
                     Started At <SortIcon col="timestamp" />
                   </button>
                 </th>
-                <th className="text-right font-medium text-muted-foreground px-3 py-2.5 w-[80px]">
-                  <button className="flex items-center gap-1 justify-end hover:text-foreground transition-colors" onClick={() => handleSort("duration")}>
-                    Duration <SortIcon col="duration" />
-                  </button>
-                </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((conv, i) => (
+              {paginated.map((conv, i) => (
                 <tr
                   key={conv.id}
                   className="border-b border-border/15 hover:bg-secondary/20 cursor-pointer transition-colors group"
@@ -429,10 +309,7 @@ export default function Conversations() {
 
                   {/* User / Visitor */}
                   <td className="px-3 py-2.5">
-                    <div>
-                      <span className="text-foreground/90">{conv.userName}</span>
-                      <span className="block text-[10px] text-muted-foreground/60 font-mono">{conv.userId}</span>
-                    </div>
+                    <span className="text-foreground/90">{conv.userName}</span>
                   </td>
 
                   {/* Channel */}
@@ -447,32 +324,6 @@ export default function Conversations() {
                     </div>
                   </td>
 
-                  {/* Status */}
-                  <td className="px-3 py-2.5">
-                    <Badge variant="outline" className={`text-[10px] gap-1 ${statusStyles[conv.status]}`}>
-                      {statusIcons[conv.status]}
-                      {conv.status}
-                    </Badge>
-                  </td>
-
-                  {/* Conversion Status */}
-                  <td className="px-3 py-2.5">
-                    <Badge variant="outline" className={`text-[10px] ${conversionStyles[conv.conversionStatus]}`}>
-                      {conv.conversionStatus}
-                    </Badge>
-                  </td>
-
-                  {/* Revenue */}
-                  <td className="px-3 py-2.5 text-right">
-                    {conv.revenueOutcome > 0 ? (
-                      <span className="font-medium text-qiko-success tabular-nums">
-                        ${conv.revenueOutcome.toLocaleString()}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/40">—</span>
-                    )}
-                  </td>
-
                   {/* Started At */}
                   <td className="px-3 py-2.5">
                     <div>
@@ -484,21 +335,13 @@ export default function Conversations() {
                       </span>
                     </div>
                   </td>
-
-                  {/* Duration */}
-                  <td className="px-3 py-2.5 text-right">
-                    <div className="flex items-center gap-1 justify-end">
-                      <Clock className="size-3 text-muted-foreground/40" />
-                      <span className="tabular-nums text-foreground/70">{conv.duration}</span>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
 
           {/* Empty state */}
-          {filtered.length === 0 && (
+          {paginated.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <MessageSquare className="size-10 opacity-20 mb-3" />
               <p className="text-sm font-medium">No conversations found</p>
@@ -510,6 +353,30 @@ export default function Conversations() {
           )}
         </div>
       </ScrollArea>
+
+      <div className="shrink-0 px-6 py-3 border-t border-border/30 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
+          Prev
+        </Button>
+        <span>
+          Page {page} / {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

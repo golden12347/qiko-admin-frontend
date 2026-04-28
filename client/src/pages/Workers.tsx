@@ -3,11 +3,12 @@
 // All workers across all tenants with status, performance, filters
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -17,23 +18,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Search,
   Bot,
   Zap,
-  Clock,
-  MessageSquare,
   Globe,
   Phone,
+  Download,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { platformWorkers } from "@/lib/data";
+import { toast } from "sonner";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -55,54 +49,124 @@ const typeStyles: Record<string, string> = {
   Onboarding: "bg-violet-400/10 text-violet-400",
   Retention: "bg-rose-400/10 text-rose-400",
 };
+const ROWS_PER_PAGE = 10;
+
+function escapeCsv(value: string | number): string {
+  const stringValue = String(value ?? "");
+  if (stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+}
 
 export default function Workers() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     return platformWorkers.filter((w) => {
       const matchSearch =
         w.name.toLowerCase().includes(search.toLowerCase()) ||
         w.customerName.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = statusFilter === "all" || w.status === statusFilter;
-      const matchType = typeFilter === "all" || w.type === typeFilter;
-      return matchSearch && matchStatus && matchType;
+      return matchSearch;
     });
-  }, [search, statusFilter, typeFilter]);
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * ROWS_PER_PAGE;
+    return filtered.slice(start, start + ROWS_PER_PAGE);
+  }, [filtered, page]);
 
   const stats = useMemo(() => ({
     total: platformWorkers.length,
     live: platformWorkers.filter((w) => w.status === "Live").length,
     training: platformWorkers.filter((w) => w.status === "Training").length,
-    error: platformWorkers.filter((w) => w.status === "Error").length,
-    totalConvsToday: platformWorkers.reduce((s, w) => s + w.conversationsToday, 0),
   }), []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function handleExportCsv() {
+    if (filtered.length === 0) {
+      toast.error("No data to export.");
+      return;
+    }
+
+    const headers = [
+      "Worker",
+      "Customer",
+      "Type",
+      "Status",
+      "Channels",
+      "Total Conversations",
+      "Last Active",
+    ];
+
+    const rows = filtered.map((w) => [
+      w.name,
+      w.customerName,
+      w.type,
+      w.status,
+      w.channels.join(" | "),
+      w.conversationsTotal,
+      w.lastActive,
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const datePart = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `workers-${datePart}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    toast.success(`Exported ${filtered.length} workers.`);
+  }
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold font-heading tracking-tight">Workers</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          All AI workers deployed across the platform
-        </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold font-heading tracking-tight">Workers</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            All AI workers deployed across the platform
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs gap-1.5 border-border/50"
+          onClick={handleExportCsv}
+        >
+          <Download className="size-3.5" /> Export CSV
+        </Button>
       </div>
 
       {/* Summary */}
       <motion.div
-        className="grid grid-cols-2 md:grid-cols-5 gap-4"
+        className="grid grid-cols-2 md:grid-cols-3 gap-4"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
       >
         <StatCard icon={<Bot className="size-4" />} label="Total Workers" value={stats.total} color="text-foreground" />
         <StatCard icon={<Zap className="size-4" />} label="Live" value={stats.live} color="text-qiko-success" />
-        <StatCard icon={<Clock className="size-4" />} label="Training" value={stats.training} color="text-qiko-cyan" />
-        <StatCard icon={<Bot className="size-4" />} label="Errors" value={stats.error} color="text-qiko-error" />
-        <StatCard icon={<MessageSquare className="size-4" />} label="Convs Today" value={stats.totalConvsToday.toLocaleString()} color="text-qiko-indigo" />
+        <StatCard icon={<Bot className="size-4" />} label="Training" value={stats.training} color="text-qiko-cyan" />
       </motion.div>
 
       {/* Filters */}
@@ -116,32 +180,6 @@ export default function Workers() {
             className="pl-9 bg-secondary/50 border-border/50"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[130px] bg-secondary/50 border-border/50">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="Live">Live</SelectItem>
-            <SelectItem value="Training">Training</SelectItem>
-            <SelectItem value="Paused">Paused</SelectItem>
-            <SelectItem value="Error">Error</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[160px] bg-secondary/50 border-border/50">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="Sales">Sales</SelectItem>
-            <SelectItem value="Support">Support</SelectItem>
-            <SelectItem value="Research">Research</SelectItem>
-            <SelectItem value="Financial Analyst">Financial Analyst</SelectItem>
-            <SelectItem value="Onboarding">Onboarding</SelectItem>
-            <SelectItem value="Retention">Retention</SelectItem>
-          </SelectContent>
-        </Select>
         <span className="text-xs text-muted-foreground ml-auto">
           {filtered.length} of {platformWorkers.length} workers
         </span>
@@ -158,16 +196,12 @@ export default function Workers() {
                 <TableHead className="text-xs font-medium text-muted-foreground">Type</TableHead>
                 <TableHead className="text-xs font-medium text-muted-foreground">Status</TableHead>
                 <TableHead className="text-xs font-medium text-muted-foreground">Channels</TableHead>
-                <TableHead className="text-xs font-medium text-muted-foreground text-right">Today</TableHead>
                 <TableHead className="text-xs font-medium text-muted-foreground text-right">Total Convs</TableHead>
-                <TableHead className="text-xs font-medium text-muted-foreground text-right">Leads</TableHead>
-                <TableHead className="text-xs font-medium text-muted-foreground text-right">Conv. Rate</TableHead>
-                <TableHead className="text-xs font-medium text-muted-foreground">Resp. Time</TableHead>
                 <TableHead className="text-xs font-medium text-muted-foreground">Last Active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((w) => (
+              {paginated.map((w) => (
                 <TableRow key={w.id} className="border-border/30 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => navigate(`/workers/${w.id}`)}>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -198,22 +232,45 @@ export default function Workers() {
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{w.conversationsToday}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{w.conversationsTotal.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{w.leadsGenerated.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm font-medium">
-                    <span className={w.conversionRate >= 10 ? "text-qiko-success" : "text-muted-foreground"}>
-                      {w.conversionRate}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums">{w.avgResponseTime}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{w.lastActive}</TableCell>
                 </TableRow>
               ))}
+              {paginated.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                    No workers match your search.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
+          Prev
+        </Button>
+        <span>
+          Page {page} / {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

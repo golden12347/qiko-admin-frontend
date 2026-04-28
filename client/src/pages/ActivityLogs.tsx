@@ -42,7 +42,6 @@ import {
   MessageSquare,
   DollarSign,
   Shield,
-  Clock,
   ArrowUpDown,
   X,
   ExternalLink,
@@ -50,6 +49,7 @@ import {
 import { activityLogs, type ActivityLog } from "@/lib/data";
 import { Link } from "wouter";
 import { toast } from "sonner";
+import { isDateInGlobalRange, useGlobalDateFilter } from "@/contexts/DateFilterContext";
 
 // ── Config ──────────────────────────────────────────────────
 
@@ -100,13 +100,6 @@ const actorTypeColors: Record<string, string> = {
   Admin: "bg-qiko-warning/15 text-qiko-warning border-qiko-warning/20",
 };
 
-const dateRangeOptions = [
-  { label: "Today", value: "today" },
-  { label: "Last 7 days", value: "7d" },
-  { label: "Last 30 days", value: "30d" },
-  { label: "All time", value: "all" },
-];
-
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: (i: number) => ({
@@ -119,12 +112,12 @@ const fadeUp = {
 // ── Main Component ──────────────────────────────────────────
 
 export default function ActivityLogs() {
+  const { filter } = useGlobalDateFilter();
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [customerFilter, setCustomerFilter] = useState("all");
   const [workerFilter, setWorkerFilter] = useState("all");
-  const [dateRange, setDateRange] = useState("all");
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState<"timestamp" | "eventType" | "severity">("timestamp");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -164,23 +157,11 @@ export default function ActivityLogs() {
       const matchEventType = eventTypeFilter === "all" || log.eventType === eventTypeFilter;
       const matchCustomer = customerFilter === "all" || log.customerName === customerFilter;
       const matchWorker = workerFilter === "all" || log.workerName === workerFilter;
-
-      let matchDate = true;
-      if (dateRange !== "all") {
-        const logDate = new Date(log.timestamp);
-        const now = new Date();
-        if (dateRange === "today") {
-          matchDate = logDate.toDateString() === now.toDateString();
-        } else if (dateRange === "7d") {
-          matchDate = now.getTime() - logDate.getTime() < 7 * 86400000;
-        } else if (dateRange === "30d") {
-          matchDate = now.getTime() - logDate.getTime() < 30 * 86400000;
-        }
-      }
+      const matchDate = isDateInGlobalRange(log.timestamp, filter);
 
       return matchSearch && matchSeverity && matchEventType && matchCustomer && matchWorker && matchDate;
     });
-  }, [search, severityFilter, eventTypeFilter, customerFilter, workerFilter, dateRange]);
+  }, [search, severityFilter, eventTypeFilter, customerFilter, workerFilter, filter]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -235,7 +216,7 @@ export default function ActivityLogs() {
     setPage(1);
   }, [sortField]);
 
-  const activeFilterCount = [severityFilter, eventTypeFilter, customerFilter, workerFilter, dateRange]
+  const activeFilterCount = [severityFilter, eventTypeFilter, customerFilter, workerFilter]
     .filter((f) => f !== "all").length;
 
   const clearFilters = () => {
@@ -243,7 +224,6 @@ export default function ActivityLogs() {
     setEventTypeFilter("all");
     setCustomerFilter("all");
     setWorkerFilter("all");
-    setDateRange("all");
     setSearch("");
     setPage(1);
   };
@@ -367,18 +347,6 @@ export default function ActivityLogs() {
               className="overflow-hidden"
             >
               <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border/30">
-                <Select value={dateRange} onValueChange={(v) => { setDateRange(v); setPage(1); }}>
-                  <SelectTrigger className="w-[140px] bg-card/60 border-border/40 text-sm">
-                    <Clock className="size-3.5 mr-1.5 text-muted-foreground" />
-                    <SelectValue placeholder="Date Range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dateRangeOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
                 <Select value={severityFilter} onValueChange={(v) => { setSeverityFilter(v); setPage(1); }}>
                   <SelectTrigger className="w-[130px] bg-card/60 border-border/40 text-sm">
                     <SelectValue placeholder="Severity" />

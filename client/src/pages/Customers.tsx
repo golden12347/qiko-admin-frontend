@@ -5,7 +5,7 @@
 // Design: Dark Lattice — data-dense, Stripe/Linear-inspired
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,28 +21,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Search,
   Users,
   TrendingUp,
-  DollarSign,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  CreditCard,
-  FlaskConical,
-  UserX,
   Download,
   ChevronRight,
   Bot,
   MessageSquare,
-  Target,
 } from "lucide-react";
 import { customers, type Customer } from "@/lib/data";
 import { toast } from "sonner";
@@ -56,15 +44,12 @@ const fadeUp = {
 /* ── status / plan badge colors ────────────────────────────── */
 const statusColors: Record<string, string> = {
   Active: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
-  Trial: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/20",
-  Churned: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
-  Suspended: "bg-qiko-error/15 text-qiko-error border-qiko-error/20",
+  "Non-active": "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
 };
 
 const planColors: Record<string, string> = {
-  Starter: "bg-muted-foreground/10 text-muted-foreground",
-  Growth: "bg-qiko-cyan/10 text-qiko-cyan",
-  Business: "bg-qiko-indigo/10 text-qiko-indigo",
+  Basic: "bg-muted-foreground/10 text-muted-foreground",
+  Premium: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
 };
 
@@ -75,14 +60,12 @@ type SortKey =
   | "status"
   | "workersCount"
   | "conversationsTotal"
-  | "leadsTotal"
-  | "paidSubscribers"
   | "totalEarnings"
-  | "mrr"
   | "joinedDate"
   | "lastActive";
 
 type SortDir = "asc" | "desc";
+const ROWS_PER_PAGE = 10;
 
 /* ── helpers ───────────────────────────────────────────────── */
 function fmt(n: number): string {
@@ -105,25 +88,36 @@ function parseLastActive(s: string): number {
   return 99999;
 }
 
+function escapeCsv(value: string | number): string {
+  const stringValue = String(value ?? "");
+  if (stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+}
+
+function getDisplayPlan(plan: Customer["plan"]): "Basic" | "Premium" | "Enterprise" {
+  if (plan === "Enterprise") return "Enterprise";
+  if (plan === "Business") return "Premium";
+  return "Basic";
+}
+
+function getDisplayStatus(status: Customer["status"]): "Active" | "Non-active" {
+  return status === "Active" ? "Active" : "Non-active";
+}
+
 /* ── component ─────────────────────────────────────────────── */
 export default function Customers() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [planFilter, setPlanFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("totalEarnings");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [page, setPage] = useState(1);
 
   /* ── derived stats ────────────────────────────────────────── */
   const stats = useMemo(() => ({
     total: customers.length,
     active: customers.filter((c) => c.status === "Active").length,
-    trial: customers.filter((c) => c.status === "Trial").length,
-    churned: customers.filter((c) => c.status === "Churned").length,
-    totalMRR: customers.reduce((sum, c) => sum + c.mrr, 0),
-    totalEarnings: customers.reduce((sum, c) => sum + c.totalEarnings, 0),
-    paidSubscribers: customers.reduce((sum, c) => sum + c.paidSubscribers, 0),
   }), []);
 
   /* ── filter + sort ────────────────────────────────────────── */
@@ -133,34 +127,18 @@ export default function Customers() {
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.contactEmail.toLowerCase().includes(search.toLowerCase()) ||
         c.industry.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchPlan = planFilter === "all" || c.plan === planFilter;
-
-      let matchDate = true;
-      if (dateFilter !== "all") {
-        const joined = new Date(c.joinedDate);
-        const now = new Date();
-        if (dateFilter === "30d") matchDate = (now.getTime() - joined.getTime()) <= 30 * 86400000;
-        else if (dateFilter === "90d") matchDate = (now.getTime() - joined.getTime()) <= 90 * 86400000;
-        else if (dateFilter === "6m") matchDate = (now.getTime() - joined.getTime()) <= 180 * 86400000;
-        else if (dateFilter === "1y") matchDate = (now.getTime() - joined.getTime()) <= 365 * 86400000;
-      }
-
-      return matchSearch && matchStatus && matchPlan && matchDate;
+      return matchSearch;
     });
 
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case "name": cmp = a.name.localeCompare(b.name); break;
-        case "plan": cmp = a.plan.localeCompare(b.plan); break;
-        case "status": cmp = a.status.localeCompare(b.status); break;
+        case "plan": cmp = getDisplayPlan(a.plan).localeCompare(getDisplayPlan(b.plan)); break;
+        case "status": cmp = getDisplayStatus(a.status).localeCompare(getDisplayStatus(b.status)); break;
         case "workersCount": cmp = a.workersCount - b.workersCount; break;
         case "conversationsTotal": cmp = a.conversationsTotal - b.conversationsTotal; break;
-        case "leadsTotal": cmp = a.leadsTotal - b.leadsTotal; break;
-        case "paidSubscribers": cmp = a.paidSubscribers - b.paidSubscribers; break;
         case "totalEarnings": cmp = a.totalEarnings - b.totalEarnings; break;
-        case "mrr": cmp = a.mrr - b.mrr; break;
         case "joinedDate": cmp = new Date(a.joinedDate).getTime() - new Date(b.joinedDate).getTime(); break;
         case "lastActive": cmp = parseLastActive(a.lastActive) - parseLastActive(b.lastActive); break;
       }
@@ -168,7 +146,21 @@ export default function Customers() {
     });
 
     return result;
-  }, [search, statusFilter, planFilter, dateFilter, sortKey, sortDir]);
+  }, [search, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * ROWS_PER_PAGE;
+    return filtered.slice(start, start + ROWS_PER_PAGE);
+  }, [filtered, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, sortKey, sortDir]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   /* ── sort handler ─────────────────────────────────────────── */
   function handleSort(key: SortKey) {
@@ -187,6 +179,52 @@ export default function Customers() {
       : <ArrowDown className="size-3 text-qiko-indigo ml-1" />;
   }
 
+  function handleExportCsv() {
+    if (filtered.length === 0) {
+      toast.error("No data to export.");
+      return;
+    }
+
+    const headers = [
+      "Name",
+      "Plan",
+      "Status",
+      "Workers",
+      "Conversations",
+      "Total Earnings",
+      "Joined",
+      "Last Active",
+    ];
+
+    const rows = filtered.map((c) => [
+      c.name,
+      getDisplayPlan(c.plan),
+      getDisplayStatus(c.status),
+      c.workersCount,
+      c.conversationsTotal,
+      c.totalEarnings,
+      c.joinedDate,
+      c.lastActive,
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const datePart = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `customers-${datePart}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    toast.success(`Exported ${filtered.length} customers.`);
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* ── Header ──────────────────────────────────────────── */}
@@ -201,7 +239,7 @@ export default function Customers() {
           variant="outline"
           size="sm"
           className="text-xs gap-1.5 border-border/50"
-          onClick={() => toast.success("Export started — CSV will download shortly.")}
+          onClick={handleExportCsv}
         >
           <Download className="size-3.5" /> Export CSV
         </Button>
@@ -209,18 +247,13 @@ export default function Customers() {
 
       {/* ── Summary KPI Cards ───────────────────────────────── */}
       <motion.div
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3"
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
       >
         <KPICard icon={<Users className="size-4" />} label="Total" value={stats.total} color="text-foreground" />
         <KPICard icon={<TrendingUp className="size-4" />} label="Active" value={stats.active} color="text-qiko-success" />
-        <KPICard icon={<FlaskConical className="size-4" />} label="Trial" value={stats.trial} color="text-qiko-cyan" />
-        <KPICard icon={<UserX className="size-4" />} label="Churned" value={stats.churned} color="text-muted-foreground" />
-        <KPICard icon={<CreditCard className="size-4" />} label="Paid Subs" value={stats.paidSubscribers} color="text-emerald-400" />
-        <KPICard icon={<DollarSign className="size-4" />} label="Total MRR" value={`$${stats.totalMRR.toLocaleString()}`} color="text-violet-400" />
-        <KPICard icon={<DollarSign className="size-4" />} label="Lifetime Rev" value={`$${fmt(stats.totalEarnings)}`} color="text-amber-400" />
       </motion.div>
 
       {/* ── Filters Bar ─────────────────────────────────────── */}
@@ -234,50 +267,14 @@ export default function Customers() {
             className="pl-9 bg-secondary/50 border-border/50"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[130px] bg-secondary/50 border-border/50">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="Active">Active</SelectItem>
-            <SelectItem value="Trial">Trial</SelectItem>
-            <SelectItem value="Churned">Churned</SelectItem>
-            <SelectItem value="Suspended">Suspended</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={planFilter} onValueChange={setPlanFilter}>
-          <SelectTrigger className="w-[130px] bg-secondary/50 border-border/50">
-            <SelectValue placeholder="Plan" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Plans</SelectItem>
-            <SelectItem value="Starter">Starter</SelectItem>
-            <SelectItem value="Growth">Growth</SelectItem>
-            <SelectItem value="Business">Business</SelectItem>
-            <SelectItem value="Enterprise">Enterprise</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={dateFilter} onValueChange={setDateFilter}>
-          <SelectTrigger className="w-[140px] bg-secondary/50 border-border/50">
-            <SelectValue placeholder="Date Joined" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Time</SelectItem>
-            <SelectItem value="30d">Last 30 Days</SelectItem>
-            <SelectItem value="90d">Last 90 Days</SelectItem>
-            <SelectItem value="6m">Last 6 Months</SelectItem>
-            <SelectItem value="1y">Last Year</SelectItem>
-          </SelectContent>
-        </Select>
-        {(statusFilter !== "all" || planFilter !== "all" || dateFilter !== "all" || search) && (
+        {search && (
           <Button
             variant="ghost"
             size="sm"
             className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => { setSearch(""); setStatusFilter("all"); setPlanFilter("all"); setDateFilter("all"); }}
+            onClick={() => { setSearch(""); }}
           >
-            Clear filters
+            Clear search
           </Button>
         )}
         <span className="text-xs text-muted-foreground ml-auto tabular-nums">
@@ -298,17 +295,14 @@ export default function Customers() {
                     <SortableHead col="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="status" />} />
                     <SortableHead col="workersCount" label="Workers" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="workersCount" />} align="right" />
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
-                    <SortableHead col="leadsTotal" label="Conversions" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="leadsTotal" />} align="right" />
-                    <SortableHead col="paidSubscribers" label="Paid Subs" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="paidSubscribers" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
-                    <SortableHead col="mrr" label="MRR" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="mrr" />} align="right" />
                     <SortableHead col="joinedDate" label="Joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="joinedDate" />} />
                     <SortableHead col="lastActive" label="Last Active" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="lastActive" />} />
                     <TableHead className="text-xs font-medium text-muted-foreground w-8" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((c) => (
+                  {paginated.map((c) => (
                     <TableRow
                       key={c.id}
                       className="border-border/30 cursor-pointer hover:bg-secondary/30 transition-colors group"
@@ -316,28 +310,20 @@ export default function Customers() {
                     >
                       {/* Customer Name + Industry */}
                       <TableCell className="min-w-[180px]">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-qiko-indigo/12 text-qiko-indigo font-bold text-xs">
-                            {c.name.charAt(0)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium group-hover:text-qiko-indigo transition-colors">{c.name}</p>
-                            <p className="text-[11px] text-muted-foreground">{c.industry} · {c.country}</p>
-                          </div>
-                        </div>
+                        <p className="text-sm font-medium group-hover:text-qiko-indigo transition-colors">{c.name}</p>
                       </TableCell>
 
                       {/* Plan */}
                       <TableCell>
-                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan]}`}>
-                          {c.plan}
+                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[getDisplayPlan(c.plan)]}`}>
+                          {getDisplayPlan(c.plan)}
                         </Badge>
                       </TableCell>
 
                       {/* Status */}
                       <TableCell>
-                        <Badge variant="outline" className={`text-[10px] ${statusColors[c.status]}`}>
-                          {c.status}
+                        <Badge variant="outline" className={`text-[10px] ${statusColors[getDisplayStatus(c.status)]}`}>
+                          {getDisplayStatus(c.status)}
                         </Badge>
                       </TableCell>
 
@@ -357,29 +343,9 @@ export default function Customers() {
                         </span>
                       </TableCell>
 
-                      {/* Conversions */}
-                      <TableCell className="text-right">
-                        <span className="tabular-nums text-sm flex items-center justify-end gap-1">
-                          <Target className="size-3 text-muted-foreground/50" />
-                          {fmt(c.leadsTotal)}
-                        </span>
-                      </TableCell>
-
-                      {/* Paid Subscribers */}
-                      <TableCell className="text-right tabular-nums text-sm">
-                        {c.paidSubscribers > 0 ? c.paidSubscribers : <span className="text-muted-foreground/40">—</span>}
-                      </TableCell>
-
                       {/* Total Earnings */}
                       <TableCell className="text-right tabular-nums text-sm font-medium">
                         {c.totalEarnings > 0 ? `$${c.totalEarnings.toLocaleString()}` : <span className="text-muted-foreground/40">—</span>}
-                      </TableCell>
-
-                      {/* MRR */}
-                      <TableCell className="text-right">
-                        <span className={`tabular-nums text-sm font-semibold ${c.mrr > 0 ? "text-emerald-400" : "text-muted-foreground/40"}`}>
-                          {c.mrr > 0 ? `$${c.mrr.toLocaleString()}` : "—"}
-                        </span>
                       </TableCell>
 
                       {/* Date Joined */}
@@ -398,9 +364,9 @@ export default function Customers() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filtered.length === 0 && (
+                  {paginated.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                         No customers match your filters.
                       </TableCell>
                     </TableRow>
@@ -415,7 +381,30 @@ export default function Customers() {
       {/* ── Table footer ────────────────────────────────────── */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>Showing {filtered.length} customers · Sorted by {sortKey.replace(/([A-Z])/g, " $1").toLowerCase()} ({sortDir})</span>
-        <span>Click any row to view customer details</span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Prev
+          </Button>
+          <span>
+            Page {page} / {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+          <span className="ml-2">Click any row to view customer details</span>
+        </div>
       </div>
     </div>
   );

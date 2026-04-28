@@ -36,6 +36,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { isDateInGlobalRange, useGlobalDateFilter } from "@/contexts/DateFilterContext";
 
 /* ── Alert data model ─────────────────────────────────────── */
 
@@ -371,6 +372,7 @@ const statusConfig = {
 
 /* ── component ─────────────────────────────────────────────── */
 export default function Alerts() {
+  const { filter } = useGlobalDateFilter();
   const [alerts, setAlerts] = useState<Alert[]>(alertsData);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -423,6 +425,8 @@ export default function Alerts() {
     if (statusFilter !== "all") {
       filtered = filtered.filter(a => a.status === statusFilter);
     }
+
+    filtered = filtered.filter(a => isDateInGlobalRange(a.createdAt, filter));
 
     return filtered;
   };
