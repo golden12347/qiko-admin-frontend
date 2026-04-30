@@ -4,7 +4,6 @@
  * Layout: Two-column split — transcript left, summary/metadata right
  * Sections: Conversation Info, Conversion Outcome, Actions Taken, Visitor Metadata
  */
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,32 +15,14 @@ import {
   Bot,
   Building2,
   Calendar,
-  CalendarCheck,
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  DollarSign,
-  ExternalLink,
-  Flag,
   Globe,
-  Laptop,
-  Link2,
-  MapPin,
   MessageSquare,
-  Monitor,
   Phone,
   Star,
   Tag,
-  Target,
-  TrendingUp,
   User,
-  UserCheck,
-  AlertTriangle,
-  XCircle,
-  Megaphone,
   ArrowUpRight,
   Shield,
-  Hash,
 } from "lucide-react";
 import { useParams, useLocation } from "wouter";
 
@@ -115,21 +96,6 @@ function getDefaultTranscript(convId: string) {
   return msgs;
 }
 
-const statusColor: Record<string, string> = {
-  Active: "bg-qiko-cyan/10 text-qiko-cyan border-qiko-cyan/20",
-  Completed: "bg-qiko-success/10 text-qiko-success border-qiko-success/20",
-  Escalated: "bg-qiko-warning/10 text-qiko-warning border-qiko-warning/20",
-  Dropped: "bg-qiko-error/10 text-qiko-error border-qiko-error/20",
-};
-
-const conversionColor: Record<string, string> = {
-  Converted: "bg-qiko-success/10 text-qiko-success border-qiko-success/20",
-  Qualified: "bg-qiko-indigo/10 text-qiko-indigo border-qiko-indigo/20",
-  Nurturing: "bg-qiko-cyan/10 text-qiko-cyan border-qiko-cyan/20",
-  Lost: "bg-qiko-error/10 text-qiko-error border-qiko-error/20",
-  None: "bg-muted/30 text-muted-foreground border-border/20",
-};
-
 export default function ConversationDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -154,28 +120,24 @@ export default function ConversationDetail() {
   const transcript = transcripts[c.id] || getDefaultTranscript(c.id);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4 md:p-6 max-w-[1300px] mx-auto">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-foreground" onClick={() => navigate("/conversations")}>
             <ArrowLeft className="size-3.5 mr-1" /> Conversations
           </Button>
           <span className="text-muted-foreground/30">/</span>
-          <span className="text-sm font-heading text-foreground">{c.id.toUpperCase()}</span>
+          <span className="text-xs md:text-sm font-heading text-foreground">{c.id.toUpperCase()}</span>
         </div>
 
-        <div className="flex items-start justify-between mt-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="space-y-1.5">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-heading font-bold tracking-tight">{c.userName}</h1>
-              <Badge variant="outline" className={`text-[10px] px-2 py-0 ${statusColor[c.status]}`}>{c.status}</Badge>
-              <Badge variant="outline" className={`text-[10px] px-2 py-0 ${conversionColor[c.conversionStatus]}`}>{c.conversionStatus}</Badge>
+              <h1 className="text-2xl font-heading font-bold tracking-tight">{c.userName}</h1>
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><Hash className="size-3" />{c.id.toUpperCase()}</span>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1"><Calendar className="size-3" />{c.timestamp}</span>
-              <span className="flex items-center gap-1"><Clock className="size-3" />{c.duration}</span>
               <span className="flex items-center gap-1"><MessageSquare className="size-3" />{c.messagesCount} messages</span>
               <span className="flex items-center gap-1">{c.channel === "Voice" ? <Phone className="size-3" /> : <Globe className="size-3" />}{c.channel}</span>
             </div>
@@ -187,32 +149,26 @@ export default function ConversationDetail() {
                 {c.satisfaction}/5
               </div>
             )}
-            <Button variant="outline" size="sm" className="h-7 text-xs bg-transparent">
-              <Flag className="size-3 mr-1" /> Flag
-            </Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs bg-transparent">
-              <ExternalLink className="size-3 mr-1" /> Export
-            </Button>
           </div>
         </div>
       </motion.div>
 
       {/* Two-column layout */}
-      <div className="grid grid-cols-[1fr_380px] gap-4" style={{ height: "calc(100vh - 200px)" }}>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
         {/* Left: Transcript */}
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: 0.1 }}>
-          <Card className="bg-card/30 border-border/15 h-full flex flex-col">
-            <CardHeader className="p-4 pb-3 border-b border-border/10 shrink-0">
+          <Card className="bg-card border-border/40 min-h-[520px] flex flex-col shadow-sm">
+            <CardHeader className="px-5 py-4 border-b border-border/30 shrink-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-heading flex items-center gap-2">
                   <MessageSquare className="size-4 text-qiko-indigo" />
                   Conversation Transcript
                 </CardTitle>
-                <span className="text-[10px] text-muted-foreground/50 tabular-nums">{transcript.length} messages</span>
+                <span className="text-[11px] text-muted-foreground tabular-nums">{transcript.length} messages</span>
               </div>
             </CardHeader>
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-4">
+            <ScrollArea className="h-[560px] md:h-[620px]">
+              <div className="p-5 space-y-4">
                 {transcript.map((msg, i) => (
                   <motion.div
                     key={i}
@@ -238,10 +194,10 @@ export default function ConversationDetail() {
                         }`}>
                           {msg.role === "worker" ? <Bot className="size-3.5" /> : <User className="size-3.5" />}
                         </div>
-                        <div className={`max-w-[80%] space-y-1 ${msg.role === "worker" ? "" : "text-right"}`}>
+                        <div className={`max-w-[82%] space-y-1 ${msg.role === "worker" ? "" : "text-right"}`}>
                           <div className={`rounded-lg px-3.5 py-2.5 text-sm leading-relaxed ${
                             msg.role === "worker"
-                              ? "bg-card/60 border border-border/15 text-foreground"
+                              ? "bg-secondary/40 border border-border/30 text-foreground"
                               : "bg-qiko-indigo/10 border border-qiko-indigo/15 text-foreground"
                           }`}>
                             {msg.text}
@@ -275,55 +231,50 @@ export default function ConversationDetail() {
 
         {/* Right: Summary Panel */}
         <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: 0.15 }}>
-          <ScrollArea className="h-full">
-            <div className="space-y-3">
+          <div className="space-y-3 xl:sticky xl:top-20">
               {/* Conversation Info */}
-              <Card className="bg-card/30 border-border/15">
-                <CardHeader className="p-3 pb-2">
-                  <CardTitle className="text-xs font-heading flex items-center gap-1.5">
-                    <MessageSquare className="size-3 text-qiko-indigo" />
+              <Card className="bg-card border-border/40 shadow-sm">
+                <CardHeader className="px-4 py-3 border-b border-border/25">
+                  <CardTitle className="text-sm font-heading flex items-center gap-1.5">
+                    <MessageSquare className="size-3.5 text-qiko-indigo" />
                     Conversation Info
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-3 pt-0">
-                  <div className="space-y-2.5">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Building2 className="size-3" />Customer</span>
-                      <button onClick={() => navigate(`/customers/${customer?.slug || ""}`)} className="text-[11px] text-qiko-indigo hover:underline flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Building2 className="size-3.5" />Customer</span>
+                      <button onClick={() => navigate(`/customers/${customer?.slug || ""}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
                         {c.customerName} <ArrowUpRight className="size-2.5" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Bot className="size-3" />Worker</span>
-                      <button onClick={() => navigate(`/workers/${c.workerId}`)} className="text-[11px] text-qiko-indigo hover:underline flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Bot className="size-3.5" />Worker</span>
+                      <button onClick={() => navigate(`/workers/${c.workerId}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
                         {c.workerName} <ArrowUpRight className="size-2.5" />
                       </button>
                     </div>
                     {worker && (
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Tag className="size-3" />Worker Type</span>
-                        <span className="text-[11px]">{worker.type}</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="size-3.5" />Worker Type</span>
+                        <span className="text-xs">{worker.type}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">{c.channel === "Voice" ? <Phone className="size-3" /> : <Globe className="size-3" />}Channel</span>
-                      <span className="text-[11px]">{c.channel}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5">{c.channel === "Voice" ? <Phone className="size-3.5" /> : <Globe className="size-3.5" />}Channel</span>
+                      <span className="text-xs">{c.channel}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Clock className="size-3" />Duration</span>
-                      <span className="text-[11px] tabular-nums">{c.duration}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Calendar className="size-3.5" />Started</span>
+                      <span className="text-xs tabular-nums">{c.timestamp}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Calendar className="size-3" />Started</span>
-                      <span className="text-[11px] tabular-nums">{c.timestamp}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><MessageSquare className="size-3" />Messages</span>
-                      <span className="text-[11px] tabular-nums">{c.messagesCount}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5"><MessageSquare className="size-3.5" />Messages</span>
+                      <span className="text-xs tabular-nums">{c.messagesCount}</span>
                     </div>
                     {c.satisfaction && (
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Star className="size-3" />Satisfaction</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Star className="size-3.5" />Satisfaction</span>
                         <div className="flex items-center gap-1">
                           {Array.from({ length: 5 }).map((_, i) => (
                             <Star key={i} className={`size-3 ${i < c.satisfaction! ? "text-qiko-warning fill-qiko-warning" : "text-muted-foreground/20"}`} />
@@ -334,255 +285,7 @@ export default function ConversationDetail() {
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Conversion Outcome */}
-              <Card className="bg-card/30 border-border/15">
-                <CardHeader className="p-3 pb-2">
-                  <CardTitle className="text-xs font-heading flex items-center gap-1.5">
-                    <TrendingUp className="size-3 text-qiko-success" />
-                    Conversion Outcome
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-3 pt-0">
-                  <div className="space-y-3">
-                    {/* Status indicators */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className={`rounded-md p-2.5 text-center ${c.leadCaptured ? "bg-qiko-success/8 border border-qiko-success/15" : "bg-muted/10 border border-border/10"}`}>
-                        <Target className={`size-4 mx-auto mb-1 ${c.leadCaptured ? "text-qiko-success" : "text-muted-foreground/30"}`} />
-                        <p className={`text-[10px] font-medium ${c.leadCaptured ? "text-qiko-success" : "text-muted-foreground/40"}`}>Lead Captured</p>
-                        <p className={`text-[10px] mt-0.5 ${c.leadCaptured ? "text-qiko-success/70" : "text-muted-foreground/20"}`}>{c.leadCaptured ? "Yes" : "No"}</p>
-                      </div>
-                      <div className={`rounded-md p-2.5 text-center ${c.bookingMade ? "bg-qiko-indigo/8 border border-qiko-indigo/15" : "bg-muted/10 border border-border/10"}`}>
-                        <CalendarCheck className={`size-4 mx-auto mb-1 ${c.bookingMade ? "text-qiko-indigo" : "text-muted-foreground/30"}`} />
-                        <p className={`text-[10px] font-medium ${c.bookingMade ? "text-qiko-indigo" : "text-muted-foreground/40"}`}>Booking Made</p>
-                        <p className={`text-[10px] mt-0.5 ${c.bookingMade ? "text-qiko-indigo/70" : "text-muted-foreground/20"}`}>{c.bookingMade ? "Yes" : "No"}</p>
-                      </div>
-                      <div className={`rounded-md p-2.5 text-center ${c.paidSubscription ? "bg-qiko-success/8 border border-qiko-success/15" : "bg-muted/10 border border-border/10"}`}>
-                        <CreditCard className={`size-4 mx-auto mb-1 ${c.paidSubscription ? "text-qiko-success" : "text-muted-foreground/30"}`} />
-                        <p className={`text-[10px] font-medium ${c.paidSubscription ? "text-qiko-success" : "text-muted-foreground/40"}`}>Paid Subscription</p>
-                        <p className={`text-[10px] mt-0.5 ${c.paidSubscription ? "text-qiko-success/70" : "text-muted-foreground/20"}`}>{c.paidSubscription ? "Yes" : "No"}</p>
-                      </div>
-                      <div className={`rounded-md p-2.5 text-center ${c.conversionStatus === "Converted" ? "bg-qiko-success/8 border border-qiko-success/15" : "bg-muted/10 border border-border/10"}`}>
-                        <CheckCircle2 className={`size-4 mx-auto mb-1 ${c.conversionStatus === "Converted" ? "text-qiko-success" : "text-muted-foreground/30"}`} />
-                        <p className={`text-[10px] font-medium ${c.conversionStatus === "Converted" ? "text-qiko-success" : "text-muted-foreground/40"}`}>Converted</p>
-                        <p className={`text-[10px] mt-0.5 ${c.conversionStatus === "Converted" ? "text-qiko-success/70" : "text-muted-foreground/20"}`}>{c.conversionStatus}</p>
-                      </div>
-                    </div>
-
-                    {/* Revenue */}
-                    <Separator className="bg-border/10" />
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><DollarSign className="size-3" />Revenue Generated</span>
-                        <span className={`text-sm font-heading font-bold tabular-nums ${c.revenueOutcome > 0 ? "text-qiko-success" : "text-muted-foreground/40"}`}>
-                          ${c.revenueOutcome.toLocaleString()}
-                        </span>
-                      </div>
-                      {c.paidSubscription && c.subscriptionValue > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><CreditCard className="size-3" />Subscription Value</span>
-                          <span className="text-sm font-heading font-bold tabular-nums text-qiko-indigo">
-                            ${c.subscriptionValue.toLocaleString()}/yr
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Actions Taken */}
-              <Card className="bg-card/30 border-border/15">
-                <CardHeader className="p-3 pb-2">
-                  <CardTitle className="text-xs font-heading flex items-center gap-1.5">
-                    <CheckCircle2 className="size-3 text-qiko-cyan" />
-                    Actions Taken
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-3 pt-0">
-                  <div className="space-y-1.5">
-                    {c.leadCaptured && (
-                      <div className="flex items-center gap-2.5 text-xs px-2.5 py-2 rounded-md bg-qiko-success/5 border border-qiko-success/10">
-                        <div className="size-5 rounded-full bg-qiko-success/10 flex items-center justify-center shrink-0">
-                          <Target className="size-2.5 text-qiko-success" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-qiko-success">Lead Submitted</p>
-                          <p className="text-[10px] text-muted-foreground/50 mt-0.5">Contact information captured from {c.userName}</p>
-                        </div>
-                      </div>
-                    )}
-                    {c.bookingMade && (
-                      <div className="flex items-center gap-2.5 text-xs px-2.5 py-2 rounded-md bg-qiko-indigo/5 border border-qiko-indigo/10">
-                        <div className="size-5 rounded-full bg-qiko-indigo/10 flex items-center justify-center shrink-0">
-                          <CalendarCheck className="size-2.5 text-qiko-indigo" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-qiko-indigo">Call Booked</p>
-                          <p className="text-[10px] text-muted-foreground/50 mt-0.5">Demo/meeting scheduled via Calendly</p>
-                        </div>
-                      </div>
-                    )}
-                    {c.paidSubscription && (
-                      <div className="flex items-center gap-2.5 text-xs px-2.5 py-2 rounded-md bg-qiko-success/5 border border-qiko-success/10">
-                        <div className="size-5 rounded-full bg-qiko-success/10 flex items-center justify-center shrink-0">
-                          <CreditCard className="size-2.5 text-qiko-success" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-qiko-success">Paid Subscription</p>
-                          <p className="text-[10px] text-muted-foreground/50 mt-0.5">${c.subscriptionValue.toLocaleString()}/yr subscription activated</p>
-                        </div>
-                      </div>
-                    )}
-                    {c.revenueOutcome > 0 && !c.paidSubscription && (
-                      <div className="flex items-center gap-2.5 text-xs px-2.5 py-2 rounded-md bg-qiko-success/5 border border-qiko-success/10">
-                        <div className="size-5 rounded-full bg-qiko-success/10 flex items-center justify-center shrink-0">
-                          <DollarSign className="size-2.5 text-qiko-success" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-qiko-success">Payment Received</p>
-                          <p className="text-[10px] text-muted-foreground/50 mt-0.5">${c.revenueOutcome.toLocaleString()} one-time payment</p>
-                        </div>
-                      </div>
-                    )}
-                    {c.status === "Escalated" && (
-                      <div className="flex items-center gap-2.5 text-xs px-2.5 py-2 rounded-md bg-qiko-warning/5 border border-qiko-warning/10">
-                        <div className="size-5 rounded-full bg-qiko-warning/10 flex items-center justify-center shrink-0">
-                          <AlertTriangle className="size-2.5 text-qiko-warning" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-qiko-warning">Escalated to Human</p>
-                          <p className="text-[10px] text-muted-foreground/50 mt-0.5">Transferred to human agent for resolution</p>
-                        </div>
-                      </div>
-                    )}
-                    {c.status === "Dropped" && (
-                      <div className="flex items-center gap-2.5 text-xs px-2.5 py-2 rounded-md bg-qiko-error/5 border border-qiko-error/10">
-                        <div className="size-5 rounded-full bg-qiko-error/10 flex items-center justify-center shrink-0">
-                          <XCircle className="size-2.5 text-qiko-error" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-qiko-error">Conversation Dropped</p>
-                          <p className="text-[10px] text-muted-foreground/50 mt-0.5">User abandoned the conversation</p>
-                        </div>
-                      </div>
-                    )}
-                    {!c.leadCaptured && !c.bookingMade && !c.paidSubscription && c.revenueOutcome === 0 && c.status !== "Escalated" && c.status !== "Dropped" && (
-                      <p className="text-[11px] text-muted-foreground/40 py-2 text-center">No actions recorded for this conversation</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Visitor Metadata */}
-              <Card className="bg-card/30 border-border/15">
-                <CardHeader className="p-3 pb-2">
-                  <CardTitle className="text-xs font-heading flex items-center gap-1.5">
-                    <User className="size-3 text-qiko-cyan" />
-                    Visitor Metadata
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-3 pt-0">
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><UserCheck className="size-3" />Visitor</span>
-                      <span className="text-[11px]">{c.userName}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Hash className="size-3" />User ID</span>
-                      <span className="text-[11px] tabular-nums font-mono text-muted-foreground/60">{c.userId}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Laptop className="size-3" />Device</span>
-                      <span className="text-[11px]">{c.device}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><MapPin className="size-3" />Location</span>
-                      <span className="text-[11px]">{c.location}</span>
-                    </div>
-
-                    <Separator className="bg-border/10" />
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Globe className="size-3" />Source</span>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-qiko-indigo/5 border-qiko-indigo/15 text-qiko-indigo">{c.source}</Badge>
-                    </div>
-                    {c.campaign && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Megaphone className="size-3" />Campaign</span>
-                        <span className="text-[11px] font-mono text-qiko-cyan">{c.campaign}</span>
-                      </div>
-                    )}
-                    {c.referrer && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Link2 className="size-3" />Referrer</span>
-                        <span className="text-[11px] text-muted-foreground/60 truncate max-w-[180px]">{c.referrer}</span>
-                      </div>
-                    )}
-                    {!c.campaign && !c.referrer && (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Megaphone className="size-3" />Campaign</span>
-                          <span className="text-[11px] text-muted-foreground/30">None</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Link2 className="size-3" />Referrer</span>
-                          <span className="text-[11px] text-muted-foreground/30">Direct</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Customer Account Summary */}
-              {customer && (
-                <Card className="bg-card/30 border-border/15">
-                  <CardHeader className="p-3 pb-2">
-                    <CardTitle className="text-xs font-heading flex items-center gap-1.5">
-                      <Building2 className="size-3 text-muted-foreground" />
-                      Customer Account
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-3 pt-0">
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">Plan</span>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{customer.plan}</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">Status</span>
-                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
-                          customer.status === "Active" ? "bg-qiko-success/10 text-qiko-success border-qiko-success/20" :
-                          customer.status === "Trial" ? "bg-qiko-cyan/10 text-qiko-cyan border-qiko-cyan/20" :
-                          "bg-qiko-error/10 text-qiko-error border-qiko-error/20"
-                        }`}>{customer.status}</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">Industry</span>
-                        <span className="text-[11px]">{customer.industry}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">MRR</span>
-                        <span className="text-[11px] font-heading font-bold tabular-nums">${customer.mrr.toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">Workers</span>
-                        <span className="text-[11px] tabular-nums">{customer.workersCount}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">Total Conversations</span>
-                        <span className="text-[11px] tabular-nums">{customer.conversationsTotal.toLocaleString()}</span>
-                      </div>
-                      <Button variant="outline" size="sm" className="w-full h-7 text-[11px] bg-transparent mt-1" onClick={() => navigate(`/customers/${customer.slug}`)}>
-                        View Full Account <ArrowUpRight className="size-3 ml-1" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </ScrollArea>
+          </div>
         </motion.div>
       </div>
     </div>
