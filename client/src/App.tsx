@@ -5,6 +5,8 @@ import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { GlobalDateFilterProvider } from "./contexts/DateFilterContext";
+import { Provider } from "react-redux";
+import { store } from "./store";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import DashboardLayout from "./components/DashboardLayout";
 import { lazy, Suspense, useEffect } from "react";
@@ -112,14 +114,16 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
-        <AuthProvider>
-          <GlobalDateFilterProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Router />
-            </TooltipProvider>
-          </GlobalDateFilterProvider>
-        </AuthProvider>
+        <Provider store={store}>
+          <AuthProvider>
+            <GlobalDateFilterProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Router />
+              </TooltipProvider>
+            </GlobalDateFilterProvider>
+          </AuthProvider>
+        </Provider>
       </ThemeProvider>
     </ErrorBoundary>
   );

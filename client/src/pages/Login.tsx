@@ -76,7 +76,7 @@ export default function Login() {
             </span>
           </div>
           <p className="mt-4 text-[11px] text-muted-foreground/80">
-            Demo owner account: <span className="font-mono">admin@qiko.ai / admin123</span>
+            Sign in with your admin API credentials (backend at <span className="font-mono">127.0.0.1:8002</span>).
           </p>
         </CardContent>
       </Card>

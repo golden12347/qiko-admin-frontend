@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect } from "react";
+import { useAppSelector } from "@/store/hooks";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -111,10 +112,15 @@ const activityTypeConfig: Record<string, { icon: React.ReactNode; bg: string }> 
 
 /* ── component ─────────────────────────────────────────────── */
 export default function Overview() {
+  const auth = useAppSelector((state) => state.auth);
   const { filter } = useGlobalDateFilter();
   const [alertFilter, setAlertFilter] = useState<string>("all");
   const [liveConvCount, setLiveConvCount] = useState(platformKPIs.conversationsToday);
   const [liveLeadCount, setLiveLeadCount] = useState(platformKPIs.leadsToday);
+
+  useEffect(() => {
+    console.log("[Overview] Redux auth:", auth);
+  }, [auth]);
 
   // Simulate live conversation counter incrementing
   useEffect(() => {

@@ -1,4 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { adminLogin, adminLogout } from "@/services/adminAuthApi";
+import { setCredentials, clearAuth, type AdminUser } from "@/store/slices/authSlice";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
 type UserRole = "owner" | "admin" | "analyst";
 type InviteStatus = "pending" | "accepted" | "revoked";
@@ -49,10 +52,12 @@ interface AuthContextType {
   currentUser: AuthUser | null;
   users: AuthUser[];
   invites: AdminInvite[];
+  token: string | null;
+  admin: AdminUser | null;
   login: (payload: LoginPayload) => Promise<{ ok: boolean; message?: string }>;
   signup: (payload: SignupPayload) => Promise<{ ok: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ ok: boolean; message: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   sendInvite: (payload: InvitePayload) => Promise<{ ok: boolean; message: string }>;
   resendInvite: (inviteId: string) => Promise<{ ok: boolean; message: string }>;
   revokeInvite: (inviteId: string) => Promise<{ ok: boolean; message: string }>;
@@ -60,7 +65,6 @@ interface AuthContextType {
 
 const STORAGE_KEYS = {
   users: "qiko_admin_users",
-  session: "qiko_admin_session",
   invites: "qiko_admin_invites",
 } as const;
 
@@ -118,25 +122,37 @@ function makeId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+function adminToAuthUser(admin: AdminUser): AuthUser {
+  return {
+    id: String(admin.id),
+    name: admin.name,
+    email: admin.email,
+    role: "admin",
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const dispatch = useAppDispatch();
+  const { token, admin } = useAppSelector((s) => s.auth);
+
   const [isLoading, setIsLoading] = useState(true);
   const [storedUsers, setStoredUsers] = useState<StoredUser[]>([]);
   const [invites, setInvites] = useState<AdminInvite[]>([]);
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     const users = loadStoredUsers();
     const savedInvites = loadStoredInvites();
-    const sessionId = localStorage.getItem(STORAGE_KEYS.session);
-    const sessionUser = sessionId ? users.find((u) => u.id === sessionId) ?? null : null;
-
     setStoredUsers(users);
     setInvites(savedInvites);
-    setCurrentUser(sessionUser ? stripPassword(sessionUser) : null);
     setIsLoading(false);
   }, []);
 
   const users = useMemo(() => storedUsers.map(stripPassword), [storedUsers]);
+
+  const currentUser = useMemo(() => (admin ? adminToAuthUser(admin) : null), [admin]);
+
+  const isAuthenticated = Boolean(token && admin);
 
   const persistUsers = (next: StoredUser[]) => {
     setStoredUsers(next);
@@ -148,25 +164,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEYS.invites, JSON.stringify(next));
   };
 
-  const login: AuthContextType["login"] = async ({ email, password }) => {
-    const normalizedEmail = normalizeEmail(email);
-    const user = storedUsers.find((u) => normalizeEmail(u.email) === normalizedEmail);
-    if (!user || user.password !== password) {
-      return { ok: false, message: "Invalid email or password." };
-    }
+  const login = useCallback<AuthContextType["login"]>(
+    async ({ email, password }) => {
+      try {
+        const data = await adminLogin({ email: email.trim(), password });
+        dispatch(
+          setCredentials({
+            token: data.token,
+            admin: {
+              id: data.admin.id,
+              name: data.admin.name,
+              email: data.admin.email,
+            },
+          })
+        );
+        return { ok: true };
+      } catch (err: unknown) {
+        const ax = err as { response?: { data?: { message?: string } } };
+        const message = ax?.response?.data?.message;
+        return {
+          ok: false,
+          message: typeof message === "string" ? message : "Invalid email or password.",
+        };
+      }
+    },
+    [dispatch]
+  );
 
-    const nextUsers = storedUsers.map((u) =>
-      u.id === user.id
-        ? { ...u, lastLoginAt: new Date().toISOString() }
-        : u
-    );
-    persistUsers(nextUsers);
-    localStorage.setItem(STORAGE_KEYS.session, user.id);
-    setCurrentUser(stripPassword({ ...user, lastLoginAt: new Date().toISOString() }));
-    return { ok: true };
-  };
-
-  const signup: AuthContextType["signup"] = async ({ name, email, password }) => {
+  const signup = useCallback<AuthContextType["signup"]>(
+    async ({ name, email, password }) => {
     const normalizedEmail = normalizeEmail(email);
     const exists = storedUsers.some((u) => normalizeEmail(u.email) === normalizedEmail);
     if (exists) {
@@ -174,9 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const pendingInvite = invites.find(
-      (invite) =>
-        normalizeEmail(invite.email) === normalizedEmail &&
-        invite.status === "pending"
+      (invite) => normalizeEmail(invite.email) === normalizedEmail && invite.status === "pending"
     );
 
     const newUser: StoredUser = {
@@ -194,36 +218,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (pendingInvite) {
       const nextInvites = invites.map((invite) =>
-        invite.id === pendingInvite.id
-          ? { ...invite, status: "accepted" as const }
-          : invite
+        invite.id === pendingInvite.id ? { ...invite, status: "accepted" as const } : invite
       );
       persistInvites(nextInvites);
     }
 
-    localStorage.setItem(STORAGE_KEYS.session, newUser.id);
-    setCurrentUser(stripPassword(newUser));
-    return { ok: true };
-  };
+      return { ok: true };
+    },
+    [storedUsers, invites]
+  );
 
-  const forgotPassword: AuthContextType["forgotPassword"] = async (email) => {
+  const forgotPassword = useCallback<AuthContextType["forgotPassword"]>(
+    async (email) => {
     const normalizedEmail = normalizeEmail(email);
     const exists = storedUsers.some((u) => normalizeEmail(u.email) === normalizedEmail);
     if (!exists) {
       return { ok: false, message: "No account found with that email." };
     }
-    return {
-      ok: true,
-      message: "Password reset link sent (simulated). Connect this handler to your API provider.",
-    };
-  };
+      return {
+        ok: true,
+        message: "Password reset link sent (simulated). Connect this handler to your API provider.",
+      };
+    },
+    [storedUsers]
+  );
 
-  const logout = () => {
-    localStorage.removeItem(STORAGE_KEYS.session);
-    setCurrentUser(null);
-  };
+  const logout = useCallback<AuthContextType["logout"]>(async () => {
+    if (token) {
+      try {
+        await adminLogout();
+      } catch {
+        /* still clear client session */
+      }
+    }
+    dispatch(clearAuth());
+  }, [dispatch, token]);
 
-  const sendInvite: AuthContextType["sendInvite"] = async ({ name, email }) => {
+  const sendInvite = useCallback<AuthContextType["sendInvite"]>(
+    async ({ name, email }) => {
     if (!currentUser) {
       return { ok: false, message: "You must be logged in to invite users." };
     }
@@ -234,9 +266,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const hasPendingInvite = invites.some(
-      (invite) =>
-        normalizeEmail(invite.email) === normalizedEmail &&
-        invite.status === "pending"
+      (invite) => normalizeEmail(invite.email) === normalizedEmail && invite.status === "pending"
     );
     if (hasPendingInvite) {
       return { ok: false, message: "A pending invite already exists for this email." };
@@ -254,11 +284,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       invitedAt: now.toISOString(),
       expiresAt,
     };
-    persistInvites([newInvite, ...invites]);
-    return { ok: true, message: "Invite sent successfully." };
-  };
+      persistInvites([newInvite, ...invites]);
+      return { ok: true, message: "Invite sent successfully." };
+    },
+    [currentUser, storedUsers, invites]
+  );
 
-  const resendInvite: AuthContextType["resendInvite"] = async (inviteId) => {
+  const resendInvite = useCallback<AuthContextType["resendInvite"]>(
+    async (inviteId) => {
     const invite = invites.find((i) => i.id === inviteId);
     if (!invite || invite.status !== "pending") {
       return { ok: false, message: "Only pending invites can be resent." };
@@ -273,29 +306,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         : i
     );
-    persistInvites(nextInvites);
-    return { ok: true, message: "Invite resent." };
-  };
+      persistInvites(nextInvites);
+      return { ok: true, message: "Invite resent." };
+    },
+    [invites]
+  );
 
-  const revokeInvite: AuthContextType["revokeInvite"] = async (inviteId) => {
+  const revokeInvite = useCallback<AuthContextType["revokeInvite"]>(
+    async (inviteId) => {
     const invite = invites.find((i) => i.id === inviteId);
     if (!invite || invite.status !== "pending") {
       return { ok: false, message: "Only pending invites can be revoked." };
     }
-    const nextInvites = invites.map((i) =>
-      i.id === inviteId ? { ...i, status: "revoked" as const } : i
-    );
-    persistInvites(nextInvites);
-    return { ok: true, message: "Invite revoked." };
-  };
+    const nextInvites = invites.map((i) => (i.id === inviteId ? { ...i, status: "revoked" as const } : i));
+      persistInvites(nextInvites);
+      return { ok: true, message: "Invite revoked." };
+    },
+    [invites]
+  );
 
   const value = useMemo<AuthContextType>(
     () => ({
       isLoading,
-      isAuthenticated: !!currentUser,
+      isAuthenticated,
       currentUser,
       users,
       invites,
+      token,
+      admin,
       login,
       signup,
       forgotPassword,
@@ -304,7 +342,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resendInvite,
       revokeInvite,
     }),
-    [isLoading, currentUser, users, invites]
+    [
+      isLoading,
+      isAuthenticated,
+      currentUser,
+      users,
+      invites,
+      token,
+      admin,
+      login,
+      signup,
+      forgotPassword,
+      logout,
+      sendInvite,
+      resendInvite,
+      revokeInvite,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

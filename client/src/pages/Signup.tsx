@@ -32,8 +32,8 @@ export default function Signup() {
       return;
     }
 
-    toast.success("Account created successfully.");
-    setLocation("/");
+    toast.success("Account created. Sign in with your admin credentials.");
+    setLocation("/login");
   }
 
   return (

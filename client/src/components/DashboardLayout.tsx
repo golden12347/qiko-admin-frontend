@@ -142,8 +142,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <button
               type="button"
-              onClick={() => {
-                logout();
+              onClick={async () => {
+                await logout();
                 setLocation("/login");
               }}
               className="w-full h-8 px-3 rounded-md border border-border/40 bg-secondary/40 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors flex items-center justify-center gap-1.5 group-data-[collapsible=icon]:px-0"
