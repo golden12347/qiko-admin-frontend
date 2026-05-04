@@ -77,7 +77,7 @@ const monthlyEarnings = customers.reduce((sum, c) => sum + c.mrr, 0);
 
 const kpiCards = [
   { label: "Total Customers", value: platformKPIs.totalCustomers, format: "number" as const, trend: kpiTrends.totalCustomers, icon: Users, color: "text-qiko-indigo", bg: "bg-qiko-indigo/10" },
-  { label: "Active Workers", value: platformKPIs.liveWorkers, format: "number" as const, trend: kpiTrends.totalWorkers, icon: Bot, color: "text-qiko-cyan", bg: "bg-qiko-cyan/10", subtitle: `${platformKPIs.totalWorkers.toLocaleString()} total` },
+  { label: "Total Workers", value: platformKPIs.totalWorkers, format: "number" as const, trend: kpiTrends.totalWorkers, icon: Bot, color: "text-qiko-cyan", bg: "bg-qiko-cyan/10", subtitle: `${platformKPIs.liveWorkers.toLocaleString()} live` },
   { label: "Total Conversations", value: platformKPIs.conversationsToday, format: "number" as const, trend: kpiTrends.conversationsToday, icon: MessageSquare, color: "text-qiko-success", bg: "bg-qiko-success/10", subtitle: "today" },
   { label: "Paid Subscribers", value: paidSubscribers, format: "number" as const, trend: { value: 4.2, direction: "up" as const }, icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-400/10" },
   { label: "Monthly Earnings", value: monthlyEarnings, format: "currency" as const, trend: kpiTrends.platformMRR, icon: DollarSign, color: "text-violet-400", bg: "bg-violet-400/10" },
