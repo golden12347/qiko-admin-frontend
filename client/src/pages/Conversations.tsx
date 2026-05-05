@@ -1,169 +1,198 @@
 // ============================================================
 // Conversations — Platform-wide conversation table
-// Design: Full-width data table with comprehensive filters,
-// sorting, search, and row-click to detail page.
-// Palette: qiko-navy base, qiko-indigo accents, semantic colors
+// API-backed list with server-side pagination
 // ============================================================
 
-import { useEffect, useState, useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Search,
   MessageSquare,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
   Globe,
   Phone,
   Download,
-  Filter,
-  X,
 } from "lucide-react";
 import { useLocation } from "wouter";
-import { platformConversations, type PlatformConversation } from "@/lib/data";
-import { isDateInGlobalRange, useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import { toast } from "sonner";
+import { adminConversationList, type ConversationListApiResponse } from "@/services/adminConversationsApi";
+import { platformConversations } from "@/lib/data";
 
-// ── Style Maps ──────────────────────────────────────────────
-
-// ── Sort types ──────────────────────────────────────────────
-
-type SortKey = "id" | "customerName" | "workerName" | "userName" | "channel" | "status" | "conversionStatus" | "revenueOutcome" | "timestamp" | "duration";
-type SortDir = "asc" | "desc";
-const ROWS_PER_PAGE = 10;
-
-function parseDuration(d: string): number {
-  const parts = d.match(/(\d+)m\s*(\d+)s/);
-  if (!parts) return 0;
-  return parseInt(parts[1]) * 60 + parseInt(parts[2]);
+interface ConversationRow {
+  id: string;
+  detailConversationId: string;
+  customerName: string; // requirement: user_name
+  workerName: string;   // requirement: agent_name
+  userName: string;
+  channel: string;
+  startedAt: string;    // requirement: joined_at
 }
 
-function sortConversations(data: PlatformConversation[], key: SortKey, dir: SortDir): PlatformConversation[] {
-  return [...data].sort((a, b) => {
-    let cmp = 0;
-    switch (key) {
-      case "revenueOutcome":
-        cmp = a.revenueOutcome - b.revenueOutcome;
-        break;
-      case "duration":
-        cmp = parseDuration(a.duration) - parseDuration(b.duration);
-        break;
-      case "timestamp":
-        cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-        break;
-      default:
-        cmp = String(a[key]).localeCompare(String(b[key]));
-    }
-    return dir === "asc" ? cmp : -cmp;
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function formatStartedAt(value: string): string {
+  const date = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value || "—";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
-// ── Component ───────────────────────────────────────────────
+function extractConversationArray(payload: ConversationListApiResponse): unknown[] {
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.conversations)) return payload.conversations;
+
+  const nested = payload?.data as Record<string, unknown> | undefined;
+  if (nested) {
+    if (Array.isArray(nested.data)) return nested.data;
+    if (Array.isArray(nested.items)) return nested.items;
+    if (Array.isArray(nested.conversations)) return nested.conversations;
+  }
+  return [];
+}
+
+function normalizeConversation(item: unknown): ConversationRow {
+  const row = (item ?? {}) as Record<string, unknown>;
+  const members = Array.isArray(row.members) ? (row.members as Record<string, unknown>[]) : [];
+  const adminMember = members.find((m) => String(m.role ?? "").toLowerCase() === "admin");
+  const nonAdminMember = members.find((m) => String(m.role ?? "").toLowerCase() !== "admin");
+
+  // Requirement: role=admin -> Worker uses agent_name
+  const workerName = String(
+    adminMember?.agent_name ??
+    row.agent_name ??
+    row.worker_name ??
+    row.workerName ??
+    "—"
+  );
+
+  // Keep Customer column based on user_name
+  const customerName = String(
+    nonAdminMember?.user_name ??
+    adminMember?.user_name ??
+    row.user_name ??
+    row.customer_name ??
+    row.customerName ??
+    row.created_by_user_name ??
+    "—"
+  );
+
+  // Requirement: non-admin member -> User / Visitor uses agent_name
+  const userName = String(
+    nonAdminMember?.agent_name ??
+    row.user_name ??
+    row.userName ??
+    row.visitor_name ??
+    "—"
+  );
+
+  const staticFallback = platformConversations.find(
+    (c) =>
+      c.workerName.toLowerCase() === workerName.toLowerCase() ||
+      c.userName.toLowerCase() === userName.toLowerCase()
+  );
+
+  const rawId = String(row.id ?? row.conversation_id ?? slugify(`${workerName}-${customerName}`));
+  const detailConversationId = staticFallback?.id ?? platformConversations[0]?.id ?? "conv-001";
+
+  return {
+    id: rawId,
+    detailConversationId,
+    workerName,
+    customerName,
+    userName,
+    channel: String(row.channel ?? "Web"),
+    startedAt: String(
+      adminMember?.joined_at ??
+      nonAdminMember?.joined_at ??
+      row.joined_at ??
+      row.started_at ??
+      row.conversation_created_at ??
+      row.created_at ??
+      row.timestamp ??
+      "—"
+    ),
+  };
+}
 
 export default function Conversations() {
   const [, navigate] = useLocation();
-  const { filter } = useGlobalDateFilter();
   const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("");
-  const [workerFilter, setWorkerFilter] = useState("");
-  const [channelFilter, setChannelFilter] = useState("all");
-  const [sortKey, setSortKey] = useState<SortKey>("timestamp");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
-  const dateScopedConversations = useMemo(
-    () => platformConversations.filter((c) => isDateInGlobalRange(c.timestamp, filter)),
-    [filter]
-  );
+  const [rows, setRows] = useState<ConversationRow[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (customerFilter.trim()) count++;
-    if (workerFilter.trim()) count++;
-    if (channelFilter !== "all") count++;
-    return count;
-  }, [customerFilter, workerFilter, channelFilter]);
+  const fetchConversations = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await adminConversationList(page);
+      const items = extractConversationArray(data).map((item) => normalizeConversation(item));
+      setRows(items);
+
+      const nested = data?.data as Record<string, unknown> | undefined;
+      const total = toNumber(
+        data?.meta?.total ??
+        data?.total ??
+        (nested?.total as unknown) ??
+        items.length,
+        items.length
+      );
+      const pages = toNumber(
+        data?.meta?.last_page ??
+        data?.last_page ??
+        (nested?.last_page as unknown),
+        1
+      );
+      setTotalItems(total);
+      setTotalPages(Math.max(1, pages));
+    } catch {
+      toast.error("Failed to fetch conversations list.");
+      setRows([]);
+      setTotalItems(0);
+      setTotalPages(1);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
 
   const filtered = useMemo(() => {
-    const result = dateScopedConversations.filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        c.id.toLowerCase().includes(q) ||
-        c.userName.toLowerCase().includes(q) ||
-        c.workerName.toLowerCase().includes(q) ||
-        c.customerName.toLowerCase().includes(q) ||
-        c.userId.toLowerCase().includes(q);
-      const customerQ = customerFilter.trim().toLowerCase();
-      const workerQ = workerFilter.trim().toLowerCase();
-      const matchCustomer = !customerQ || c.customerName.toLowerCase().includes(customerQ);
-      const matchWorker = !workerQ || c.workerName.toLowerCase().includes(workerQ);
-      const matchChannel = channelFilter === "all" || c.channel === channelFilter;
-      return matchSearch && matchCustomer && matchWorker && matchChannel;
-    });
-    return sortConversations(result, sortKey, sortDir);
-  }, [search, customerFilter, workerFilter, channelFilter, sortKey, sortDir, dateScopedConversations]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
-  const paginated = useMemo(() => {
-    const start = (page - 1) * ROWS_PER_PAGE;
-    return filtered.slice(start, start + ROWS_PER_PAGE);
-  }, [filtered, page]);
-
-  const stats = useMemo(() => {
-    const total = dateScopedConversations.length;
-    return { total };
-  }, [dateScopedConversations]);
-
-  function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
-  }
-
-  function clearFilters() {
-    setCustomerFilter("");
-    setWorkerFilter("");
-    setChannelFilter("all");
-    setSearch("");
-  }
-
-  useEffect(() => {
-    setPage(1);
-  }, [
-    search,
-    customerFilter,
-    workerFilter,
-    channelFilter,
-    sortKey,
-    sortDir,
-    filter,
-  ]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <ArrowUpDown className="size-3 opacity-30" />;
-    return sortDir === "asc" ? <ArrowUp className="size-3 text-qiko-indigo" /> : <ArrowDown className="size-3 text-qiko-indigo" />;
-  }
+    const q = search.toLowerCase().trim();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      r.id.toLowerCase().includes(q) ||
+      r.customerName.toLowerCase().includes(q) ||
+      r.workerName.toLowerCase().includes(q) ||
+      r.userName.toLowerCase().includes(q)
+    );
+  }, [rows, search]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      {/* Header */}
       <div className="shrink-0 px-6 py-4 border-b border-border/30">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -180,142 +209,59 @@ export default function Conversations() {
           </div>
         </div>
 
-        {/* Search + filter toggle */}
         <div className="flex items-center gap-2 mt-3">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search by ID, customer, worker, or visitor..."
+              placeholder="Search by ID, customer, worker..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 pl-8 text-xs bg-secondary/30 border-border/30"
             />
           </div>
-          <Button
-            variant={showFilters ? "secondary" : "outline"}
-            size="sm"
-            className="h-8 text-xs gap-1.5 border-border/30"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="size-3.5" />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="ml-0.5 flex items-center justify-center size-4 rounded-full bg-qiko-indigo text-[10px] font-bold text-white">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-          {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 text-muted-foreground hover:text-foreground" onClick={clearFilters}>
-              <X className="size-3" />
-              Clear
-            </Button>
-          )}
           <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-            {filtered.length} of {stats.total} conversations
+            {filtered.length} on this page · {totalItems} total
           </span>
         </div>
-
-        {/* Filter row */}
-        {showFilters && (
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Input
-              value={customerFilter}
-              onChange={(e) => setCustomerFilter(e.target.value)}
-              placeholder="Search customer..."
-              className="w-[180px] h-8 text-xs bg-secondary/30 border-border/30"
-            />
-            <Input
-              value={workerFilter}
-              onChange={(e) => setWorkerFilter(e.target.value)}
-              placeholder="Search worker..."
-              className="w-[180px] h-8 text-xs bg-secondary/30 border-border/30"
-            />
-            <Select value={channelFilter} onValueChange={setChannelFilter}>
-              <SelectTrigger className="w-[120px] h-8 text-xs bg-secondary/30 border-border/30">
-                <SelectValue placeholder="Channel" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Channels</SelectItem>
-                <SelectItem value="Web">Web</SelectItem>
-                <SelectItem value="Voice">Voice</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
       </div>
 
-      {/* Table */}
       <ScrollArea className="flex-1">
-        <div className="min-w-[1200px]">
+        <div className="min-w-[1100px]">
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10">
               <tr className="bg-secondary/40 border-b border-border/30">
-                <th className="text-left font-medium text-muted-foreground px-4 py-2.5 w-[100px]">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("id")}>
-                    Conv ID <SortIcon col="id" />
-                  </button>
-                </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("customerName")}>
-                    Customer <SortIcon col="customerName" />
-                  </button>
-                </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("workerName")}>
-                    Worker <SortIcon col="workerName" />
-                  </button>
-                </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("userName")}>
-                    User / Visitor <SortIcon col="userName" />
-                  </button>
-                </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[80px]">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("channel")}>
-                    Channel <SortIcon col="channel" />
-                  </button>
-                </th>
-                <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[140px]">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort("timestamp")}>
-                    Started At <SortIcon col="timestamp" />
-                  </button>
-                </th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-2.5 w-[100px]">Conv ID</th>
+                <th className="text-left font-medium text-muted-foreground px-3 py-2.5">Customer</th>
+                <th className="text-left font-medium text-muted-foreground px-3 py-2.5">Worker</th>
+                <th className="text-left font-medium text-muted-foreground px-3 py-2.5">User / Visitor</th>
+                <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[90px]">Channel</th>
+                <th className="text-left font-medium text-muted-foreground px-3 py-2.5 w-[180px]">Started At</th>
               </tr>
             </thead>
             <tbody>
-              {paginated.map((conv, i) => (
+              {!isLoading && filtered.map((conv) => (
                 <tr
                   key={conv.id}
                   className="border-b border-border/15 hover:bg-secondary/20 cursor-pointer transition-colors group"
-                  onClick={() => navigate(`/conversations/${conv.id}`)}
+                  onClick={() => navigate(`/conversations/${conv.detailConversationId}`)}
                 >
-                  {/* Conversation ID */}
                   <td className="px-4 py-2.5">
                     <span className="font-mono text-[11px] text-muted-foreground group-hover:text-qiko-indigo transition-colors">
-                      {conv.id.toUpperCase().replace("CONV-", "#")}
+                      #{conv.id}
                     </span>
                   </td>
-
-                  {/* Customer */}
                   <td className="px-3 py-2.5">
                     <span className="font-medium">{conv.customerName}</span>
                   </td>
-
-                  {/* Worker */}
                   <td className="px-3 py-2.5">
                     <span className="text-foreground/80">{conv.workerName}</span>
                   </td>
-
-                  {/* User / Visitor */}
                   <td className="px-3 py-2.5">
                     <span className="text-foreground/90">{conv.userName}</span>
                   </td>
-
-                  {/* Channel */}
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1.5">
-                      {conv.channel === "Web" ? (
+                      {conv.channel.toLowerCase() === "web" ? (
                         <Globe className="size-3 text-qiko-indigo" />
                       ) : (
                         <Phone className="size-3 text-qiko-cyan" />
@@ -323,32 +269,26 @@ export default function Conversations() {
                       <span className="text-foreground/70">{conv.channel}</span>
                     </div>
                   </td>
-
-                  {/* Started At */}
                   <td className="px-3 py-2.5">
-                    <div>
-                      <span className="tabular-nums text-foreground/80">
-                        {conv.timestamp.split(" ").slice(1).join(" ")}
-                      </span>
-                      <span className="block text-[10px] text-muted-foreground/50 tabular-nums">
-                        {conv.timestamp.split(" ")[0]}
-                      </span>
-                    </div>
+                    <span className="tabular-nums text-foreground/80">{formatStartedAt(conv.startedAt)}</span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          {/* Empty state */}
-          {paginated.length === 0 && (
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <MessageSquare className="size-10 opacity-20 mb-3" />
+              <p className="text-sm font-medium">Loading conversations...</p>
+            </div>
+          )}
+
+          {!isLoading && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <MessageSquare className="size-10 opacity-20 mb-3" />
               <p className="text-sm font-medium">No conversations found</p>
-              <p className="text-xs mt-1">Try adjusting your search or filters</p>
-              <Button variant="outline" size="sm" className="mt-3 text-xs" onClick={clearFilters}>
-                Clear all filters
-              </Button>
+              <p className="text-xs mt-1">Try adjusting your search</p>
             </div>
           )}
         </div>
@@ -359,7 +299,7 @@ export default function Conversations() {
           variant="outline"
           size="sm"
           className="h-7 px-2 text-xs"
-          disabled={page <= 1}
+          disabled={page <= 1 || isLoading}
           onClick={() => setPage((p) => p - 1)}
         >
           Prev
@@ -371,7 +311,7 @@ export default function Conversations() {
           variant="outline"
           size="sm"
           className="h-7 px-2 text-xs"
-          disabled={page >= totalPages}
+          disabled={page >= totalPages || isLoading}
           onClick={() => setPage((p) => p + 1)}
         >
           Next
@@ -380,3 +320,4 @@ export default function Conversations() {
     </div>
   );
 }
+
