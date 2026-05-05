@@ -1,11 +1,9 @@
 // ============================================================
 // Customers — Platform-wide customer management & oversight
-// Full account summary table with all columns, sorting, filters,
-// search, and row-click navigation to Customer Detail page
-// Design: Dark Lattice — data-dense, Stripe/Linear-inspired
+// API-backed table with server-side pagination
 // ============================================================
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,16 +30,15 @@ import {
   Bot,
   MessageSquare,
 } from "lucide-react";
-import { customers, type Customer } from "@/lib/data";
+import { customers } from "@/lib/data";
+import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
 import { toast } from "sonner";
 
-/* ── animation ─────────────────────────────────────────────── */
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] as const } },
 };
 
-/* ── status / plan badge colors ────────────────────────────── */
 const statusColors: Record<string, string> = {
   Active: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
   "Non-active": "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
@@ -51,9 +48,9 @@ const planColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
   Premium: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
+  null: "bg-muted/20 text-muted-foreground",
 };
 
-/* ── sortable column keys ──────────────────────────────────── */
 type SortKey =
   | "name"
   | "plan"
@@ -61,13 +58,27 @@ type SortKey =
   | "workersCount"
   | "conversationsTotal"
   | "totalEarnings"
-  | "joinedDate"
-  | "lastActive";
+  | "joinedDate";
 
 type SortDir = "asc" | "desc";
-const ROWS_PER_PAGE = 10;
 
-/* ── helpers ───────────────────────────────────────────────── */
+type DisplayPlan = "Basic" | "Premium" | "Enterprise" | "null";
+type DisplayStatus = string;
+
+interface CustomerRow {
+  id: string;
+  name: string;
+  slug: string;
+  plan: DisplayPlan;
+  status: DisplayStatus;
+  workersCount: number;
+  conversationsTotal: number;
+  totalEarnings: number;
+  joinedDate: string;
+  contactEmail: string;
+  industry: string;
+}
+
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
@@ -76,16 +87,8 @@ function fmt(n: number): string {
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr || "—";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function parseLastActive(s: string): number {
-  if (s.includes("Just now") || s.includes("1 min")) return 0;
-  const num = parseInt(s);
-  if (s.includes("min")) return num;
-  if (s.includes("hour")) return num * 60;
-  if (s.includes("day")) return num * 1440;
-  return 99999;
 }
 
 function escapeCsv(value: string | number): string {
@@ -96,73 +99,175 @@ function escapeCsv(value: string | number): string {
   return stringValue;
 }
 
-function getDisplayPlan(plan: Customer["plan"]): "Basic" | "Premium" | "Enterprise" {
-  if (plan === "Enterprise") return "Enterprise";
-  if (plan === "Business") return "Premium";
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function extractCustomerArray(payload: CustomerListApiResponse): unknown[] {
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.customers)) return payload.customers;
+
+  const nested = payload?.data as Record<string, unknown> | undefined;
+  if (nested) {
+    if (Array.isArray(nested.data)) return nested.data;
+    if (Array.isArray(nested.items)) return nested.items;
+    if (Array.isArray(nested.customers)) return nested.customers;
+  }
+
+  return [];
+}
+
+function getDisplayPlan(plan: unknown): DisplayPlan {
+  if (plan === null) return "null";
+  if (typeof plan !== "string") return "Basic";
+  const normalized = plan.toLowerCase();
+  if (normalized.includes("enterprise")) return "Enterprise";
+  if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Premium";
   return "Basic";
 }
 
-function getDisplayStatus(status: Customer["status"]): "Active" | "Non-active" {
-  return status === "Active" ? "Active" : "Non-active";
+function getDisplayStatus(status: unknown): DisplayStatus {
+  if (typeof status !== "string" || status.trim().length === 0) return "null";
+  return status;
 }
 
-/* ── component ─────────────────────────────────────────────── */
+function getStatusBadgeClass(status: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized === "active") return statusColors.Active;
+  if (normalized === "non-active" || normalized === "inactive") return statusColors["Non-active"];
+  return "bg-muted/20 text-muted-foreground border-border/40";
+}
+
+function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>): CustomerRow {
+  const row = (item ?? {}) as Record<string, unknown>;
+  const name = typeof row.name === "string"
+    ? row.name
+    : typeof row.user_name === "string"
+      ? row.user_name
+      : "Unknown";
+  const slug = typeof row.slug === "string" && row.slug.length > 0 ? row.slug : slugify(name);
+  return {
+    id: String(row.id ?? slug),
+    name,
+    slug,
+    plan: row.subscription_plan_name === null
+      ? "null"
+      : getDisplayPlan(row.subscription_plan_name ?? row.plan ?? row.subscription_plan ?? ""),
+    status: getDisplayStatus(row.stripe_status ?? row.status ?? ""),
+    workersCount: toNumber(row.agents_count ?? row.workers_count ?? row.workersCount),
+    conversationsTotal: toNumber(row.total_conversations ?? row.conversations_total ?? row.conversationsCount ?? row.conversationsTotal),
+    totalEarnings: earningsBySlug[slug] ?? 0,
+    joinedDate: String(row.joined_date ?? row.joinedDate ?? row.created_at ?? row.createdAt ?? ""),
+    contactEmail: String(row.email ?? row.contact_email ?? row.contactEmail ?? ""),
+    industry: String(row.industry ?? ""),
+  };
+}
+
 export default function Customers() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("totalEarnings");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
+  const [customersApi, setCustomersApi] = useState<CustomerRow[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
-  /* ── derived stats ────────────────────────────────────────── */
+  const earningsBySlug = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const c of customers) {
+      map[c.slug] = c.totalEarnings;
+    }
+    return map;
+  }, []);
+
+  const fetchCustomers = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await adminCustomerList(page);
+      console.log("[Customers] customer-list API response:", data);
+      const list = extractCustomerArray(data);
+
+      const normalized = list.map((item) => normalizeCustomer(item, earningsBySlug));
+      setCustomersApi(normalized);
+
+      const nested = data?.data as Record<string, unknown> | undefined;
+      const total = toNumber(
+        data?.meta?.total ??
+        data?.total ??
+        (nested?.total as unknown) ??
+        (nested?.length as unknown),
+        normalized.length
+      );
+      const pages = toNumber(
+        data?.meta?.last_page ??
+        data?.last_page ??
+        (nested?.last_page as unknown),
+        1
+      );
+      setTotalCustomers(total);
+      setTotalPages(Math.max(1, pages));
+    } catch {
+      toast.error("Failed to fetch customers list.");
+      setCustomersApi([]);
+      setTotalCustomers(0);
+      setTotalPages(1);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [earningsBySlug, page]);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
+
   const stats = useMemo(() => ({
-    total: customers.length,
-    active: customers.filter((c) => c.status === "Active").length,
-  }), []);
+    total: totalCustomers,
+    active: customersApi.filter((c) => c.status === "Active").length,
+  }), [customersApi, totalCustomers]);
 
-  /* ── filter + sort ────────────────────────────────────────── */
   const filtered = useMemo(() => {
-    let result = customers.filter((c) => {
-      const matchSearch =
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.contactEmail.toLowerCase().includes(search.toLowerCase()) ||
-        c.industry.toLowerCase().includes(search.toLowerCase());
-      return matchSearch;
+    const result = customersApi.filter((c) => {
+      const q = search.toLowerCase();
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.contactEmail.toLowerCase().includes(q) ||
+        c.industry.toLowerCase().includes(q)
+      );
     });
 
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case "name": cmp = a.name.localeCompare(b.name); break;
-        case "plan": cmp = getDisplayPlan(a.plan).localeCompare(getDisplayPlan(b.plan)); break;
-        case "status": cmp = getDisplayStatus(a.status).localeCompare(getDisplayStatus(b.status)); break;
+        case "plan": cmp = a.plan.localeCompare(b.plan); break;
+        case "status": cmp = a.status.localeCompare(b.status); break;
         case "workersCount": cmp = a.workersCount - b.workersCount; break;
         case "conversationsTotal": cmp = a.conversationsTotal - b.conversationsTotal; break;
         case "totalEarnings": cmp = a.totalEarnings - b.totalEarnings; break;
         case "joinedDate": cmp = new Date(a.joinedDate).getTime() - new Date(b.joinedDate).getTime(); break;
-        case "lastActive": cmp = parseLastActive(a.lastActive) - parseLastActive(b.lastActive); break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
 
     return result;
-  }, [search, sortKey, sortDir]);
+  }, [customersApi, search, sortKey, sortDir]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
-  const paginated = useMemo(() => {
-    const start = (page - 1) * ROWS_PER_PAGE;
-    return filtered.slice(start, start + ROWS_PER_PAGE);
-  }, [filtered, page]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, sortKey, sortDir]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  /* ── sort handler ─────────────────────────────────────────── */
   function handleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -193,18 +298,16 @@ export default function Customers() {
       "Conversations",
       "Total Earnings",
       "Joined",
-      "Last Active",
     ];
 
     const rows = filtered.map((c) => [
       c.name,
-      getDisplayPlan(c.plan),
-      getDisplayStatus(c.status),
+      c.plan,
+      c.status,
       c.workersCount,
       c.conversationsTotal,
       c.totalEarnings,
       c.joinedDate,
-      c.lastActive,
     ]);
 
     const csv = [headers, ...rows]
@@ -227,7 +330,6 @@ export default function Customers() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-bold font-heading tracking-tight">Customers</h1>
@@ -245,7 +347,6 @@ export default function Customers() {
         </Button>
       </div>
 
-      {/* ── Summary KPI Cards ───────────────────────────────── */}
       <motion.div
         className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3"
         variants={fadeUp}
@@ -256,7 +357,6 @@ export default function Customers() {
         <KPICard icon={<TrendingUp className="size-4" />} label="Active" value={stats.active} color="text-qiko-success" />
       </motion.div>
 
-      {/* ── Filters Bar ─────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[240px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -278,11 +378,10 @@ export default function Customers() {
           </Button>
         )}
         <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-          {filtered.length} of {customers.length} customers
+          {filtered.length} on this page · {totalCustomers} total
         </span>
       </div>
 
-      {/* ── Table ───────────────────────────────────────────── */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible">
         <Card className="bg-card/80 border-border/40">
           <CardContent className="p-0">
@@ -297,37 +396,32 @@ export default function Customers() {
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
                     <SortableHead col="joinedDate" label="Joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="joinedDate" />} />
-                    <SortableHead col="lastActive" label="Last Active" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="lastActive" />} />
                     <TableHead className="text-xs font-medium text-muted-foreground w-8" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginated.map((c) => (
+                  {!isLoading && filtered.map((c) => (
                     <TableRow
                       key={c.id}
                       className="border-border/30 cursor-pointer hover:bg-secondary/30 transition-colors group"
                       onClick={() => navigate(`/customers/${c.slug}`)}
                     >
-                      {/* Customer Name + Industry */}
                       <TableCell className="min-w-[180px]">
                         <p className="text-sm font-medium group-hover:text-qiko-indigo transition-colors">{c.name}</p>
                       </TableCell>
 
-                      {/* Plan */}
                       <TableCell>
-                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[getDisplayPlan(c.plan)]}`}>
-                          {getDisplayPlan(c.plan)}
+                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan]}`}>
+                          {c.plan}
                         </Badge>
                       </TableCell>
 
-                      {/* Status */}
                       <TableCell>
-                        <Badge variant="outline" className={`text-[10px] ${statusColors[getDisplayStatus(c.status)]}`}>
-                          {getDisplayStatus(c.status)}
+                        <Badge variant="outline" className={`text-[10px] ${getStatusBadgeClass(c.status)}`}>
+                          {c.status}
                         </Badge>
                       </TableCell>
 
-                      {/* Workers */}
                       <TableCell className="text-right">
                         <span className="tabular-nums text-sm flex items-center justify-end gap-1">
                           <Bot className="size-3 text-muted-foreground/50" />
@@ -335,7 +429,6 @@ export default function Customers() {
                         </span>
                       </TableCell>
 
-                      {/* Conversations */}
                       <TableCell className="text-right">
                         <span className="tabular-nums text-sm flex items-center justify-end gap-1">
                           <MessageSquare className="size-3 text-muted-foreground/50" />
@@ -343,31 +436,32 @@ export default function Customers() {
                         </span>
                       </TableCell>
 
-                      {/* Total Earnings */}
                       <TableCell className="text-right tabular-nums text-sm font-medium">
                         {c.totalEarnings > 0 ? `$${c.totalEarnings.toLocaleString()}` : <span className="text-muted-foreground/40">—</span>}
                       </TableCell>
 
-                      {/* Date Joined */}
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {formatDate(c.joinedDate)}
                       </TableCell>
 
-                      {/* Last Active */}
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {c.lastActive}
-                      </TableCell>
-
-                      {/* Chevron */}
                       <TableCell className="w-8">
                         <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-qiko-indigo transition-colors" />
                       </TableCell>
                     </TableRow>
                   ))}
-                  {paginated.length === 0 && (
+
+                  {isLoading && (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                        No customers match your filters.
+                        Loading customers...
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!isLoading && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                        No customers found for this page.
                       </TableCell>
                     </TableRow>
                   )}
@@ -378,15 +472,14 @@ export default function Customers() {
         </Card>
       </motion.div>
 
-      {/* ── Table footer ────────────────────────────────────── */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Showing {filtered.length} customers · Sorted by {sortKey.replace(/([A-Z])/g, " $1").toLowerCase()} ({sortDir})</span>
+        <span>Showing page {page} of {totalPages} · Sorted by {sortKey.replace(/([A-Z])/g, " $1").toLowerCase()} ({sortDir})</span>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             className="h-7 px-2 text-xs"
-            disabled={page <= 1}
+            disabled={page <= 1 || isLoading}
             onClick={() => setPage((p) => p - 1)}
           >
             Prev
@@ -398,7 +491,7 @@ export default function Customers() {
             variant="outline"
             size="sm"
             className="h-7 px-2 text-xs"
-            disabled={page >= totalPages}
+            disabled={page >= totalPages || isLoading}
             onClick={() => setPage((p) => p + 1)}
           >
             Next
@@ -410,7 +503,6 @@ export default function Customers() {
   );
 }
 
-/* ── KPI Card ──────────────────────────────────────────────── */
 function KPICard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string | number; color: string }) {
   return (
     <Card className="bg-card/80 border-border/40">
@@ -425,7 +517,6 @@ function KPICard({ icon, label, value, color }: { icon: React.ReactNode; label: 
   );
 }
 
-/* ── Sortable Table Head ───────────────────────────────────── */
 function SortableHead({
   col,
   label,

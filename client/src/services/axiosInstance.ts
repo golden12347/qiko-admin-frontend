@@ -4,7 +4,7 @@ import { store } from "@/store";
 import { clearAuth } from "@/store/slices/authSlice";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8002/api/v1";
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000/api/v1";
 
 /**
  * Axios instance for API v1. Attaches Bearer token from Redux when present.
