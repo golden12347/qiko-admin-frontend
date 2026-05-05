@@ -160,15 +160,16 @@ function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>
       ? row.user_name
       : "Unknown";
   const slug = typeof row.slug === "string" && row.slug.length > 0 ? row.slug : slugify(name);
+  const isNullPlan = row.subscription_plan_name === null;
   return {
     id: String(row.id ?? slug),
     name,
     slug,
-    plan: row.subscription_plan_name === null
+    plan: isNullPlan
       ? "null"
       : getDisplayPlan(row.subscription_plan_name ?? row.plan ?? row.subscription_plan ?? ""),
     status: getDisplayStatus(row.stripe_status ?? row.status ?? ""),
-    workersCount: toNumber(row.agents_count ?? row.workers_count ?? row.workersCount),
+    workersCount: isNullPlan ? 0 : toNumber(row.agents_count ?? row.workers_count ?? row.workersCount),
     conversationsTotal: toNumber(row.total_conversations ?? row.conversations_total ?? row.conversationsCount ?? row.conversationsTotal),
     totalEarnings: earningsBySlug[slug] ?? 0,
     joinedDate: String(row.joined_date ?? row.joinedDate ?? row.created_at ?? row.createdAt ?? ""),
