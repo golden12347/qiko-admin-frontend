@@ -69,6 +69,7 @@ interface CustomerRow {
   id: string;
   name: string;
   slug: string;
+  detailSlug: string;
   plan: DisplayPlan;
   status: DisplayStatus;
   workersCount: number;
@@ -160,11 +161,14 @@ function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>
       ? row.user_name
       : "Unknown";
   const slug = typeof row.slug === "string" && row.slug.length > 0 ? row.slug : slugify(name);
+  const matchedStaticCustomer = customers.find((c) => c.name.toLowerCase() === name.toLowerCase());
+  const detailSlug = matchedStaticCustomer?.slug ?? customers[0]?.slug ?? slug;
   const isNullPlan = row.subscription_plan_name === null;
   return {
     id: String(row.id ?? slug),
     name,
     slug,
+    detailSlug,
     plan: isNullPlan
       ? "null"
       : getDisplayPlan(row.subscription_plan_name ?? row.plan ?? row.subscription_plan ?? ""),
@@ -173,7 +177,7 @@ function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>
     conversationsTotal: toNumber(row.total_conversations ?? row.conversations_total ?? row.conversationsCount ?? row.conversationsTotal),
     totalEarnings: earningsBySlug[slug] ?? 0,
     joinedDate: String(row.joined_date ?? row.joinedDate ?? row.created_at ?? row.createdAt ?? ""),
-    contactEmail: String(row.email ?? row.contact_email ?? row.contactEmail ?? ""),
+    contactEmail: String(row.user_email ?? row.email ?? row.contact_email ?? row.contactEmail ?? ""),
     industry: String(row.industry ?? ""),
   };
 }
@@ -293,6 +297,7 @@ export default function Customers() {
 
     const headers = [
       "Name",
+      "Email",
       "Plan",
       "Status",
       "Workers",
@@ -303,6 +308,7 @@ export default function Customers() {
 
     const rows = filtered.map((c) => [
       c.name,
+      c.contactEmail,
       c.plan,
       c.status,
       c.workersCount,
@@ -391,6 +397,7 @@ export default function Customers() {
                 <TableHeader>
                   <TableRow className="border-border/40 hover:bg-transparent">
                     <SortableHead col="name" label="Customer" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="name" />} />
+                    <TableHead className="text-xs font-medium text-muted-foreground">Email</TableHead>
                     <SortableHead col="plan" label="Plan" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="plan" />} />
                     <SortableHead col="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="status" />} />
                     <SortableHead col="workersCount" label="Workers" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="workersCount" />} align="right" />
@@ -405,11 +412,12 @@ export default function Customers() {
                     <TableRow
                       key={c.id}
                       className="border-border/30 cursor-pointer hover:bg-secondary/30 transition-colors group"
-                      onClick={() => navigate(`/customers/${c.slug}`)}
+                      onClick={() => navigate(`/customers/${c.detailSlug}`)}
                     >
                       <TableCell className="min-w-[180px]">
                         <p className="text-sm font-medium group-hover:text-qiko-indigo transition-colors">{c.name}</p>
                       </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{c.contactEmail || "—"}</TableCell>
 
                       <TableCell>
                         <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan]}`}>
@@ -453,7 +461,7 @@ export default function Customers() {
 
                   {isLoading && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                         Loading customers...
                       </TableCell>
                     </TableRow>
@@ -461,7 +469,7 @@ export default function Customers() {
 
                   {!isLoading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                         No customers found for this page.
                       </TableCell>
                     </TableRow>
