@@ -69,7 +69,6 @@ interface CustomerRow {
   id: string;
   name: string;
   slug: string;
-  detailSlug: string;
   plan: DisplayPlan;
   status: DisplayStatus;
   workersCount: number;
@@ -161,14 +160,11 @@ function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>
       ? row.user_name
       : "Unknown";
   const slug = typeof row.slug === "string" && row.slug.length > 0 ? row.slug : slugify(name);
-  const matchedStaticCustomer = customers.find((c) => c.name.toLowerCase() === name.toLowerCase());
-  const detailSlug = matchedStaticCustomer?.slug ?? customers[0]?.slug ?? slug;
   const isNullPlan = row.subscription_plan_name === null;
   return {
     id: String(row.id ?? slug),
     name,
     slug,
-    detailSlug,
     plan: isNullPlan
       ? "null"
       : getDisplayPlan(row.subscription_plan_name ?? row.plan ?? row.subscription_plan ?? ""),
@@ -421,7 +417,7 @@ export default function Customers() {
                     <TableRow
                       key={c.id}
                       className="border-border/30 cursor-pointer hover:bg-secondary/30 transition-colors group"
-                      onClick={() => navigate(`/customers/${c.detailSlug}`)}
+                      onClick={() => navigate(`/customers/${encodeURIComponent(c.slug)}?userId=${encodeURIComponent(c.id)}`)}
                     >
                       <TableCell className="min-w-[180px]">
                         <p className="text-sm font-medium group-hover:text-qiko-indigo transition-colors">{c.name}</p>

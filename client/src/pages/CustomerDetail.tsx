@@ -5,7 +5,7 @@
 // Design: Dark Lattice — analytical, Stripe-inspired
 // ============================================================
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,8 @@ import {
   platformWorkers,
   platformConversations,
 } from "@/lib/data";
+import { adminCustomerDetails, type CustomerDetailsApiResponse } from "@/services/adminCustomerDetailsApi";
+import { toast } from "sonner";
 
 /* ── animation ─────────────────────────────────────────────── */
 const fadeUp = {
@@ -64,11 +66,11 @@ const planColors: Record<string, string> = {
 };
 
 const workerStatusColors: Record<string, string> = {
-  Live: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
-  Training: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/20",
+  live: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
+  training: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/20",
 };
 
-const normalizeWorkerStatus = (status: string) => (status === "Live" ? "Live" : "Training");
+const normalizeWorkerStatus = (status: string) => (status === "live" ? "live" : "training");
 const normalizeCustomerStatus = (status: string) => (status === "Active" ? "Active" : "Non-active");
 const normalizeCustomerPlan = (plan: string) => {
   if (plan === "Enterprise") return "Enterprise";
@@ -94,18 +96,40 @@ function fmt(n: number): string {
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr || "—";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function normalizeWorkerStatusLabel(status: string): "live" | "training" {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "ready" || normalized === "live") return "live";
+  return "training";
 }
 
 /* ── component ─────────────────────────────────────────────── */
 export default function CustomerDetail() {
   const params = useParams<{ slug: string }>();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
 
   const customer = useMemo(
     () => customers.find((c) => c.slug === params.slug),
     [params.slug]
   );
+  const fallbackCustomerName = useMemo(
+    () =>
+      params.slug
+        .split("-")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" "),
+    [params.slug]
+  );
+  const [customerDetails, setCustomerDetails] = useState<CustomerDetailsApiResponse["data"] | null>(null);
+  const selectedUserId = useMemo(() => {
+    const queryString = typeof window !== "undefined" ? window.location.search : "";
+    const userId = new URLSearchParams(queryString).get("userId");
+    return userId && userId.length > 0 ? userId : null;
+  }, [location]);
 
   const workers = useMemo(
     () => (customer ? platformWorkers.filter((w) => w.customerId === customer.id) : []),
@@ -117,10 +141,57 @@ export default function CustomerDetail() {
     [customer]
   );
 
-  const displayStatus = normalizeCustomerStatus(customer?.status || "");
-  const displayPlan = normalizeCustomerPlan(customer?.plan || "");
+  useEffect(() => {
+    const customerIdForApi = selectedUserId ?? customer?.id;
+    if (!customerIdForApi) return;
+    (async () => {
+      try {
+        const response = await adminCustomerDetails(customerIdForApi);
+        setCustomerDetails(response?.data ?? null);
+      } catch {
+        setCustomerDetails(null);
+        toast.error("Failed to fetch customer details.");
+      }
+    })();
+  }, [customer?.id, selectedUserId]);
 
-  if (!customer) {
+  const displayCustomerName = customerDetails?.user?.user_name || "—";
+  const displayContact = customerDetails?.user?.email || "—";
+  const displayJoined = customerDetails?.user?.created_at || "";
+
+  const detailWorkers = useMemo(
+    () =>
+      Array.isArray(customerDetails?.agents)
+        ? customerDetails.agents.map((agent) => ({
+            id: String(agent?.id ?? crypto.randomUUID()),
+            name: String(agent?.name ?? "—"),
+            type: String(agent?.industry ?? "—"),
+            status: normalizeWorkerStatusLabel(String(agent?.status ?? "")),
+            conversationsTotal: Number(agent?.conversations_count ?? 0),
+            lastActive: "—",
+          }))
+        : [],
+    [customerDetails?.agents]
+  );
+
+  const detailConversations = useMemo(
+    () =>
+      Array.isArray(customerDetails?.recent_conversations)
+        ? customerDetails.recent_conversations.map((conv) => ({
+            id: String(conv?.conversation_id ?? crypto.randomUUID()),
+            userName: String(conv?.user_name ?? "—"),
+            workerName: String(conv?.agent_name ?? "—"),
+            channel: "Web",
+            timestamp: String(conv?.conversation_time ?? "—"),
+          }))
+        : [],
+    [customerDetails?.recent_conversations]
+  );
+
+  const displayStatus = normalizeCustomerStatus(customer?.status || "Non-active");
+  const displayPlan = normalizeCustomerPlan(customer?.plan || "Basic");
+
+  if (!customer && !selectedUserId && !customerDetails) {
     return (
       <div className="p-6 flex flex-col items-center justify-center h-[60vh] gap-4">
         <Building2 className="size-12 text-muted-foreground/30" />
@@ -141,7 +212,7 @@ export default function CustomerDetail() {
             Customers
           </Link>
           <span>/</span>
-          <span className="text-foreground font-medium">{customer.name}</span>
+          <span className="text-foreground font-medium">{displayCustomerName}</span>
         </div>
         <Link href="/customers">
           <Button variant="outline" size="sm" className="h-8 text-xs">
@@ -164,11 +235,11 @@ export default function CustomerDetail() {
             <CardContent className="p-5">
               <div className="flex items-start gap-4">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-qiko-indigo/12 text-qiko-indigo font-bold text-xl ring-1 ring-qiko-indigo/20">
-                  {customer.name.charAt(0)}
+                  {displayCustomerName.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-2xl font-bold font-heading tracking-tight">{customer.name}</h1>
+                    <h1 className="text-2xl font-bold font-heading tracking-tight">{displayCustomerName}</h1>
                     <Badge variant="outline" className={`text-xs ${statusColors[displayStatus]}`}>
                       {displayStatus}
                     </Badge>
@@ -176,13 +247,15 @@ export default function CustomerDetail() {
                       {displayPlan}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{customer.industry} · {customer.country}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {customer ? `${customer.industry} · ${customer.country}` : "—"}
+                  </p>
 
                   <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-2 mt-4">
-                    <InfoItem icon={<Mail className="size-3.5" />} label="Contact" value={customer.contactEmail} />
-                    <InfoItem icon={<Calendar className="size-3.5" />} label="Joined" value={formatDate(customer.joinedDate)} />
-                    <InfoItem icon={<Clock className="size-3.5" />} label="Last Active" value={customer.lastActive} />
-                    <InfoItem icon={<CreditCard className="size-3.5" />} label="MRR" value={customer.mrr > 0 ? `$${customer.mrr.toLocaleString()}/mo` : "—"} />
+                    <InfoItem icon={<Mail className="size-3.5" />} label="Contact" value={displayContact} />
+                    <InfoItem icon={<Calendar className="size-3.5" />} label="Joined" value={formatDate(displayJoined)} />
+                    <InfoItem icon={<Clock className="size-3.5" />} label="Last Active" value={customer?.lastActive ?? "—"} />
+                    <InfoItem icon={<CreditCard className="size-3.5" />} label="MRR" value={customer && customer.mrr > 0 ? `$${customer.mrr.toLocaleString()}/mo` : "—"} />
                   </div>
                 </div>
               </div>
@@ -196,8 +269,8 @@ export default function CustomerDetail() {
             <CardContent className="p-5">
               <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Account Summary</h3>
               <div className="grid grid-cols-2 gap-3">
-                <StatBox icon={<Bot className="size-4" />} label="Workers" value={customer.workersCount} color="text-qiko-indigo" />
-                <StatBox icon={<MessageSquare className="size-4" />} label="Conversations" value={fmt(customer.conversationsTotal)} color="text-qiko-cyan" />
+                <StatBox icon={<Bot className="size-4" />} label="Workers" value={customer?.workersCount ?? detailWorkers.length} color="text-qiko-indigo" />
+                <StatBox icon={<MessageSquare className="size-4" />} label="Conversations" value={fmt(customer?.conversationsTotal ?? detailConversations.length)} color="text-qiko-cyan" />
               </div>
             </CardContent>
           </Card>
@@ -211,15 +284,15 @@ export default function CustomerDetail() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Bot className="size-4 text-qiko-indigo" />
-                Workers ({workers.length})
+                Workers ({detailWorkers.length})
               </CardTitle>
               <Badge variant="secondary" className="text-[10px] border-0 bg-qiko-success/10 text-qiko-success">
-                {workers.filter((w) => w.status === "Live").length} Live
+                {detailWorkers.filter((w) => w.status === "live").length} Live
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            {workers.length > 0 ? (
+            {detailWorkers.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                 <TableHeader>
@@ -233,7 +306,7 @@ export default function CustomerDetail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {workers.map((w) => (
+                  {detailWorkers.map((w) => (
                     <TableRow
                       key={w.id}
                       className="border-border/30 cursor-pointer hover:bg-secondary/30 transition-colors group"
@@ -280,21 +353,21 @@ export default function CustomerDetail() {
       </motion.div>
 
       {/* ── Recent Conversations ─────────────────────────────── */}
-      {conversations.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.35 }}>
-          <Card className="bg-card border-border/50 shadow-sm">
-            <CardHeader className="py-3 border-b border-border/50">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <MessageSquare className="size-4 text-muted-foreground" />
-                  Recent Conversations
-                </CardTitle>
-                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/conversations")}>
-                  View All <ExternalLink className="size-3 ml-1" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
+      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.35 }}>
+        <Card className="bg-card border-border/50 shadow-sm">
+          <CardHeader className="py-3 border-b border-border/50">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <MessageSquare className="size-4 text-muted-foreground" />
+                Recent Conversations
+              </CardTitle>
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/conversations")}>
+                View All <ExternalLink className="size-3 ml-1" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {detailConversations.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                 <TableHeader>
@@ -306,23 +379,27 @@ export default function CustomerDetail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {conversations.slice(0, 5).map((conv) => (
+                  {detailConversations.slice(0, 5).map((conv) => (
                     <TableRow key={conv.id} className="border-border/30 hover:bg-secondary/20 transition-colors">
                       <TableCell className="text-sm">{conv.userName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{conv.workerName}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-[10px] border-0">{conv.channel}</Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{conv.timestamp}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(conv.timestamp)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+            ) : (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No recent conversations found.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 }
