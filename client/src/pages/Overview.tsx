@@ -41,10 +41,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
-  platformKPIs,
   kpiTrends,
   customers,
-  conversationsTrend,
   topCustomersByConversations,
   topCustomersByEarnings,
   revenueHistory,
@@ -54,6 +52,8 @@ import {
   platformAlerts,
 } from "@/lib/data";
 import { isDateInGlobalRange, parseDateValue, useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import { adminOverview } from "@/services/adminOverviewApi";
+import { toast } from "sonner";
 
 /* ── animation ─────────────────────────────────────────────── */
 const fadeUp = {
@@ -75,14 +75,6 @@ function fmt(n: number): string {
 /* ── derived KPIs ──────────────────────────────────────────── */
 const paidSubscribers = customers.filter(c => c.status === "Active" && c.mrr > 0).length;
 const monthlyEarnings = customers.reduce((sum, c) => sum + c.mrr, 0);
-
-const kpiCards = [
-  { label: "Total Customers", value: platformKPIs.totalCustomers, format: "number" as const, trend: kpiTrends.totalCustomers, icon: Users, color: "text-qiko-indigo", bg: "bg-qiko-indigo/10" },
-  { label: "Total Workers", value: platformKPIs.totalWorkers, format: "number" as const, trend: kpiTrends.totalWorkers, icon: Bot, color: "text-qiko-cyan", bg: "bg-qiko-cyan/10", subtitle: `${platformKPIs.liveWorkers.toLocaleString()} live` },
-  { label: "Total Conversations", value: platformKPIs.conversationsToday, format: "number" as const, trend: kpiTrends.conversationsToday, icon: MessageSquare, color: "text-qiko-success", bg: "bg-qiko-success/10", subtitle: "today" },
-  { label: "Paid Subscribers", value: paidSubscribers, format: "number" as const, trend: { value: 4.2, direction: "up" as const }, icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-400/10" },
-  { label: "Monthly Earnings", value: monthlyEarnings, format: "currency" as const, trend: kpiTrends.platformMRR, icon: DollarSign, color: "text-violet-400", bg: "bg-violet-400/10" },
-];
 
 /* ── tooltip style ─────────────────────────────────────────── */
 const tooltipStyle = {
@@ -115,44 +107,74 @@ export default function Overview() {
   const auth = useAppSelector((state) => state.auth);
   const { filter } = useGlobalDateFilter();
   const [alertFilter, setAlertFilter] = useState<string>("all");
-  const [liveConvCount, setLiveConvCount] = useState(platformKPIs.conversationsToday);
-  const [liveLeadCount, setLiveLeadCount] = useState(platformKPIs.leadsToday);
+  const [overviewCounts, setOverviewCounts] = useState({
+    totalUsers: 0,
+    totalAgents: 0,
+    totalConversations: 0,
+    totalSubscriptions: 0,
+  });
+  const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
 
   useEffect(() => {
     console.log("[Overview] Redux auth:", auth);
   }, [auth]);
 
-  // Simulate live conversation counter incrementing
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveConvCount(prev => prev + Math.floor(Math.random() * 3) + 1);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Simulate live lead counter incrementing
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.4) {
-        setLiveLeadCount(prev => prev + 1);
+    (async () => {
+      try {
+        const response = await adminOverview();
+        setOverviewCounts({
+          totalUsers: Number(response.total_users ?? 0),
+          totalAgents: Number(response.total_agents ?? 0),
+          totalConversations: Number(response.total_conversations ?? 0),
+          totalSubscriptions: Number(response.total_subscriptions ?? 0),
+        });
+        setOverviewConversationsTrend(
+          Array.isArray(response.conversations_over_time)
+            ? response.conversations_over_time.map((item) => ({
+                month: item.month,
+                conversations: Number(item.conversations ?? 0),
+              }))
+            : []
+        );
+      } catch {
+        toast.error("Failed to fetch overview data.");
       }
-    }, 8000);
-    return () => clearInterval(interval);
+    })();
   }, []);
 
   const filteredAlerts = alertFilter === "all"
     ? platformAlerts
     : platformAlerts.filter(a => a.type === alertFilter);
 
-  const filteredConversationsTrend = conversationsTrend.filter((point) =>
-    isDateInGlobalRange(parseDateValue(point.date) ?? point.date, filter)
+  const filteredConversationsTrend = overviewConversationsTrend.filter((point) =>
+    isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
+  const conversationsChartData =
+    filteredConversationsTrend.length > 0 ? filteredConversationsTrend : overviewConversationsTrend;
   const filteredRevenueHistory = revenueHistory.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
   const filteredCustomerGrowthTrend = customerGrowthTrend.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
+
+  const kpiCards: Array<{
+    label: string;
+    value: number;
+    format: "number" | "currency";
+    trend: { value: number; direction: "up" | "down" };
+    icon: typeof Users;
+    color: string;
+    bg: string;
+    subtitle?: string;
+  }> = [
+    { label: "Total Customers", value: overviewCounts.totalUsers, format: "number" as const, trend: kpiTrends.totalCustomers, icon: Users, color: "text-qiko-indigo", bg: "bg-qiko-indigo/10" },
+    { label: "Total Workers", value: overviewCounts.totalAgents, format: "number" as const, trend: kpiTrends.totalWorkers, icon: Bot, color: "text-qiko-cyan", bg: "bg-qiko-cyan/10" },
+    { label: "Total Conversations", value: overviewCounts.totalConversations, format: "number" as const, trend: kpiTrends.conversationsToday, icon: MessageSquare, color: "text-qiko-success", bg: "bg-qiko-success/10" },
+    { label: "Paid Subscribers", value: overviewCounts.totalSubscriptions, format: "number" as const, trend: { value: 4.2, direction: "up" as const }, icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-400/10" },
+    { label: "Monthly Earnings", value: monthlyEarnings, format: "currency" as const, trend: kpiTrends.platformMRR, icon: DollarSign, color: "text-violet-400", bg: "bg-violet-400/10" },
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -169,11 +191,6 @@ export default function Overview() {
       {/* ── KPI Cards (2 rows of 4) ─────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {kpiCards.map((kpi, i) => {
-          // Use live counts for conversations and leads
-          const displayValue = kpi.label === "Total Conversations" ? liveConvCount
-            : kpi.label === "Leads / Conversions" ? liveLeadCount
-            : kpi.value;
-
           return (
             <motion.div key={kpi.label} custom={i + 2} variants={fadeUp} initial="hidden" animate="visible">
               <Card className="bg-card/80 border-border/40 hover:border-border/70 transition-colors group cursor-pointer">
@@ -190,13 +207,7 @@ export default function Overview() {
                     </div>
                   </div>
                   <div className="tabular-nums text-2xl font-bold font-heading tracking-tight flex items-center gap-2">
-                    {kpi.format === "currency" ? `$${displayValue.toLocaleString()}` : fmt(displayValue)}
-                    {(kpi.label === "Total Conversations" || kpi.label === "Leads / Conversions") && (
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                      </span>
-                    )}
+                    {kpi.format === "currency" ? `$${kpi.value.toLocaleString()}` : fmt(kpi.value)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{kpi.label}</p>
                   {kpi.subtitle && <p className="text-[11px] text-muted-foreground/60 mt-0.5">{kpi.subtitle}</p>}
@@ -217,30 +228,32 @@ export default function Overview() {
                 <CardTitle className="text-sm font-medium">Conversations Over Time</CardTitle>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-qiko-indigo" />Conversations</span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400" />Leads</span>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
               <div className="h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredConversationsTrend} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                  <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
                     <defs>
                       <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
                         <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
                       </linearGradient>
-                      <linearGradient id="leadGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#34D399" stopOpacity={0.25} />
-                        <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
-                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
                     <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [value.toLocaleString(), name === "conversations" ? "Conversations" : name === "leads" ? "Leads" : name]} />
-                    <Area type="monotone" dataKey="conversations" stroke="#6366F1" strokeWidth={2} fill="url(#convGrad)" />
-                    <Area type="monotone" dataKey="leads" stroke="#34D399" strokeWidth={1.5} fill="url(#leadGrad)" />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), "Conversations"]} />
+                    <Area
+                      type="monotone"
+                      dataKey="conversations"
+                      stroke="#6366F1"
+                      strokeWidth={2}
+                      fill="url(#convGrad)"
+                      dot={{ r: 3, fill: "#6366F1", strokeWidth: 0 }}
+                      activeDot={{ r: 4, fill: "#6366F1" }}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -335,7 +348,6 @@ export default function Overview() {
                       <p className="text-sm font-medium truncate group-hover:text-qiko-indigo transition-colors">{c.name}</p>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                         <span>{c.conversations.toLocaleString()} convs</span>
-                        <span>{c.leads.toLocaleString()} leads</span>
                       </div>
                     </div>
                     <Badge variant="secondary" className="text-[10px] bg-qiko-success/10 text-qiko-success border-0 tabular-nums">
