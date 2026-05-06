@@ -191,6 +191,7 @@ export default function Customers() {
   const [customersApi, setCustomersApi] = useState<CustomerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalCustomers, setTotalCustomers] = useState(0);
+  const [activeStripeStatusCount, setActiveStripeStatusCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
   const earningsBySlug = useMemo(() => {
@@ -225,12 +226,20 @@ export default function Customers() {
         (nested?.last_page as unknown),
         1
       );
+      const activeCount = toNumber(
+        data?.active_stripe_status_count ??
+        data?.meta?.active_stripe_status_count ??
+        (nested?.active_stripe_status_count as unknown),
+        normalized.filter((c) => c.status.toLowerCase() === "active").length
+      );
       setTotalCustomers(total);
+      setActiveStripeStatusCount(activeCount);
       setTotalPages(Math.max(1, pages));
     } catch {
       toast.error("Failed to fetch customers list.");
       setCustomersApi([]);
       setTotalCustomers(0);
+      setActiveStripeStatusCount(0);
       setTotalPages(1);
     } finally {
       setIsLoading(false);
@@ -243,8 +252,8 @@ export default function Customers() {
 
   const stats = useMemo(() => ({
     total: totalCustomers,
-    active: customersApi.filter((c) => c.status === "Active").length,
-  }), [customersApi, totalCustomers]);
+    active: activeStripeStatusCount,
+  }), [activeStripeStatusCount, totalCustomers]);
 
   const filtered = useMemo(() => {
     const result = customersApi.filter((c) => {

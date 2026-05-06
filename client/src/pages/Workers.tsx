@@ -178,6 +178,8 @@ export default function Workers() {
   const [workersApi, setWorkersApi] = useState<WorkerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalWorkers, setTotalWorkers] = useState(0);
+  const [totalLive, setTotalLive] = useState(0);
+  const [totalTraining, setTotalTraining] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
   const fetchWorkers = useCallback(async () => {
@@ -201,12 +203,28 @@ export default function Workers() {
         (nested?.last_page as unknown),
         1
       );
+      const live = toNumber(
+        data?.total_live ??
+        data?.meta?.total_live ??
+        (nested?.total_live as unknown),
+        rows.filter((w) => w.status === "live").length
+      );
+      const training = toNumber(
+        data?.total_training ??
+        data?.meta?.total_training ??
+        (nested?.total_training as unknown),
+        rows.filter((w) => w.status === "training").length
+      );
       setTotalWorkers(total);
+      setTotalLive(live);
+      setTotalTraining(training);
       setTotalPages(Math.max(1, pages));
     } catch {
       toast.error("Failed to fetch workers list.");
       setWorkersApi([]);
       setTotalWorkers(0);
+      setTotalLive(0);
+      setTotalTraining(0);
       setTotalPages(1);
     } finally {
       setIsLoading(false);
@@ -227,9 +245,9 @@ export default function Workers() {
 
   const stats = useMemo(() => ({
     total: totalWorkers,
-    live: workersApi.filter((w) => w.status === "live").length,
-    training: workersApi.filter((w) => w.status === "training").length,
-  }), [workersApi, totalWorkers]);
+    live: totalLive,
+    training: totalTraining,
+  }), [totalLive, totalTraining, totalWorkers]);
 
   useEffect(() => {
     setPage(1);

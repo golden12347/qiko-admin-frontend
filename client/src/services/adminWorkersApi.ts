@@ -8,11 +8,15 @@ export interface WorkerListApiResponse {
   data?: unknown[] | Record<string, unknown>;
   items?: unknown[];
   workers?: unknown[];
+  total_live?: number;
+  total_training?: number;
   total?: number;
   per_page?: number;
   current_page?: number;
   last_page?: number;
   meta?: {
+    total_live?: number;
+    total_training?: number;
     total?: number;
     per_page?: number;
     current_page?: number;

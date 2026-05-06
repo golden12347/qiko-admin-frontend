@@ -8,6 +8,7 @@ export interface CustomerListApiResponse {
   data?: unknown[];
   items?: unknown[];
   customers?: unknown[];
+  active_stripe_status_count?: number;
   total?: number;
   per_page?: number;
   current_page?: number;
@@ -17,6 +18,7 @@ export interface CustomerListApiResponse {
     per_page?: number;
     current_page?: number;
     last_page?: number;
+    active_stripe_status_count?: number;
   };
 }
 
