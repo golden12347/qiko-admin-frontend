@@ -9,6 +9,10 @@ export interface OverviewApiResponse {
   total_agents?: number;
   total_conversations?: number;
   total_subscriptions?: number;
+  customer_conversations_users?: Array<{
+    user_name?: string;
+    total_conversations?: number;
+  }>;
   conversations_over_time?: Array<{
     month: string;
     conversations: number;

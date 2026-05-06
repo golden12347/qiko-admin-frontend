@@ -114,6 +114,9 @@ export default function Overview() {
     totalSubscriptions: 0,
   });
   const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
+  const [overviewTopCustomersByUsage, setOverviewTopCustomersByUsage] = useState<
+    Array<{ name: string; conversations: number }>
+  >([]);
 
   useEffect(() => {
     console.log("[Overview] Redux auth:", auth);
@@ -134,6 +137,14 @@ export default function Overview() {
             ? response.conversations_over_time.map((item) => ({
                 month: item.month,
                 conversations: Number(item.conversations ?? 0),
+              }))
+            : []
+        );
+        setOverviewTopCustomersByUsage(
+          Array.isArray(response.customer_conversations_users)
+            ? response.customer_conversations_users.map((item) => ({
+                name: String(item.user_name ?? "—"),
+                conversations: Number(item.total_conversations ?? 0),
               }))
             : []
         );
@@ -341,7 +352,7 @@ export default function Overview() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="space-y-3">
-                {topCustomersByConversations.map((c, i) => (
+                {overviewTopCustomersByUsage.map((c, i) => (
                   <div key={c.name} className="flex items-center gap-3 group cursor-pointer">
                     <span className="text-xs text-muted-foreground w-4 tabular-nums font-medium">{i + 1}</span>
                     <div className="flex-1 min-w-0">
@@ -351,10 +362,15 @@ export default function Overview() {
                       </div>
                     </div>
                     <Badge variant="secondary" className="text-[10px] bg-qiko-success/10 text-qiko-success border-0 tabular-nums">
-                      {c.conversion}%
+                      {topCustomersByConversations[i]?.conversion ?? 0}%
                     </Badge>
                   </div>
                 ))}
+                {overviewTopCustomersByUsage.length === 0 && (
+                  <div className="text-xs text-muted-foreground py-6 text-center">
+                    No customer usage data found.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

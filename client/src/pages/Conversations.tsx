@@ -243,7 +243,7 @@ export default function Conversations() {
                 <tr
                   key={conv.id}
                   className="border-b border-border/15 hover:bg-secondary/20 cursor-pointer transition-colors group"
-                  onClick={() => navigate(`/conversations/${conv.detailConversationId}`)}
+                  onClick={() => navigate(`/conversation-detail?conversationId=${encodeURIComponent(conv.id)}`)}
                 >
                   <td className="px-4 py-2.5">
                     <span className="font-mono text-[11px] text-muted-foreground group-hover:text-qiko-indigo transition-colors">

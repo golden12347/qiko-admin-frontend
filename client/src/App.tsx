@@ -88,6 +88,7 @@ function PrivateRoutes() {
           <Route path="/workers/:id" component={WorkerDetail} />
           <Route path="/conversations" component={Conversations} />
           <Route path="/conversations/:id" component={ConversationDetail} />
+          <Route path="/conversation-detail" component={ConversationDetail} />
           <Route path="/revenue" component={Revenue} />
           <Route path="/activity" component={ActivityLogs} />
           <Route path="/alerts" component={Alerts} />

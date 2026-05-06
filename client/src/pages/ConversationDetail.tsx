@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { platformConversations, customers, platformWorkers } from "@/lib/data";
+import { adminConversationDetails } from "@/services/adminConversationDetailsApi";
 import { motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Bot,
@@ -27,7 +29,15 @@ import {
 import { useParams, useLocation } from "wouter";
 
 // Mock transcript data per conversation
-const transcripts: Record<string, { role: "user" | "worker" | "system"; text: string; time: string; confidence?: number; sources?: string[] }[]> = {
+type TranscriptMessage = {
+  role: "user" | "worker" | "system";
+  text: string;
+  time: string;
+  confidence?: number;
+  sources?: string[];
+};
+
+const transcripts: Record<string, TranscriptMessage[]> = {
   "conv-001": [
     { role: "user", text: "Hi, I'm looking for an enterprise solution for our sales team. We have about 200 reps.", time: "9:42 AM" },
     { role: "worker", text: "Welcome! I'd be happy to help you find the right plan for your team. With 200 sales reps, our Enterprise plan would be the best fit. It includes unlimited workers, priority support, and custom integrations. Can I walk you through the key features?", time: "9:42 AM", confidence: 0.96, sources: ["Enterprise Plan Guide", "Pricing Matrix"] },
@@ -73,7 +83,7 @@ const transcripts: Record<string, { role: "user" | "worker" | "system"; text: st
 function getDefaultTranscript(convId: string) {
   const c = platformConversations.find(x => x.id === convId);
   if (!c) return [];
-  const msgs: { role: "user" | "worker" | "system"; text: string; time: string; confidence?: number; sources?: string[] }[] = [
+  const msgs: TranscriptMessage[] = [
     { role: "user", text: `Hi, I have a question about your services.`, time: c.timestamp.split(" ").slice(1).join(" ").replace(" AM", " AM").replace(" PM", " PM") || "9:00 AM" },
     { role: "worker", text: `Hello ${c.userName !== "Anonymous" ? c.userName : "there"}! I'd be happy to help. What would you like to know?`, time: c.timestamp.split(" ").slice(1).join(" ") || "9:00 AM", confidence: 0.94, sources: ["General FAQ"] },
   ];
@@ -96,12 +106,111 @@ function getDefaultTranscript(convId: string) {
   return msgs;
 }
 
+function formatTranscriptDateTime(value: string): string {
+  const normalized = value.includes(" ") ? value.replace(" ", "T") : value;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value || "—";
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function capitalizeFirstWordFirstLetter(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
 export default function ConversationDetail() {
   const { id } = useParams<{ id: string }>();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  const [apiTranscript, setApiTranscript] = useState<TranscriptMessage[] | null>(null);
+  const [apiWorkerName, setApiWorkerName] = useState<string | null>(null);
+  const [apiUserName, setApiUserName] = useState<string | null>(null);
+  const [apiWorkerIndustry, setApiWorkerIndustry] = useState<string | null>(null);
+  const [apiStartedAt, setApiStartedAt] = useState<string | null>(null);
   const c = platformConversations.find(x => x.id === id);
+  const cForUi = c ?? platformConversations[0];
+  const selectedConversationId = useMemo(() => {
+    const queryString = typeof window !== "undefined" ? window.location.search : "";
+    const conversationId = new URLSearchParams(queryString).get("conversationId");
+    return conversationId && conversationId.length > 0 ? conversationId : null;
+  }, [location]);
 
-  if (!c) {
+  useEffect(() => {
+    const conversationIdForApi = selectedConversationId ?? id;
+    if (!conversationIdForApi) return;
+    (async () => {
+      try {
+        const response = await adminConversationDetails(conversationIdForApi);
+        const dataObj = (response?.data ?? {}) as Record<string, unknown>;
+        const userData = dataObj.user;
+        let userNameFromApi: string | null = null;
+        if (Array.isArray(userData) && userData.length > 0) {
+          const firstUser = userData[0] as Record<string, unknown>;
+          userNameFromApi = String(firstUser?.user_name ?? "").trim() || null;
+        } else if (userData && typeof userData === "object") {
+          const userObj = userData as Record<string, unknown>;
+          userNameFromApi = String(userObj?.user_name ?? "").trim() || null;
+        }
+        setApiUserName(userNameFromApi);
+
+        const members = Array.isArray(dataObj.members)
+          ? (dataObj.members as Array<Record<string, unknown>>)
+          : [];
+        const adminMember = members.find(
+          (member) => String(member.role ?? "").toLowerCase() === "admin"
+        );
+        const memberRoleUser = members.find(
+          (member) => String(member.role ?? "").toLowerCase() === "member"
+        );
+        const workerNameFromMembers = String(adminMember?.agent_name ?? "").trim() || null;
+        const workerIndustryFromMembers = String(adminMember?.industry ?? "").trim() || null;
+        const startedAtFromMembers = String(memberRoleUser?.joined_at ?? "").trim() || null;
+        setApiWorkerName(workerNameFromMembers);
+        setApiWorkerIndustry(workerIndustryFromMembers);
+        setApiStartedAt(startedAtFromMembers);
+
+        const rawMessages = Array.isArray(response?.data?.messages) ? response.data.messages : [];
+        const normalized = rawMessages.map((item) => {
+          const row = (item ?? {}) as Record<string, unknown>;
+          const senderRoleRaw = String(row.sender_role ?? "").toLowerCase();
+          const roleRaw = String(row.role ?? row.sender_role ?? row.sender ?? "").toLowerCase();
+          let role: TranscriptMessage["role"];
+          if (senderRoleRaw === "admin") {
+            role = "worker"; // Left side
+          } else if (senderRoleRaw.length > 0) {
+            role = "user"; // Right side
+          } else if (roleRaw === "system") {
+            role = "system";
+          } else if (roleRaw === "worker" || roleRaw === "assistant" || roleRaw === "bot") {
+            role = "worker";
+          } else {
+            role = "user";
+          }
+          return {
+            role,
+            text: String(row.text ?? row.message ?? row.content ?? "—"),
+            time: String(row.time ?? row.created_at ?? row.timestamp ?? "—"),
+          };
+        });
+        setApiTranscript(normalized);
+      } catch {
+        setApiTranscript(null);
+        setApiWorkerName(null);
+        setApiUserName(null);
+        setApiWorkerIndustry(null);
+        setApiStartedAt(null);
+      }
+    })();
+  }, [id, selectedConversationId]);
+
+  if (!cForUi) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center space-y-3">
@@ -115,9 +224,12 @@ export default function ConversationDetail() {
     );
   }
 
-  const customer = customers.find(x => x.id === c.customerId);
-  const worker = platformWorkers.find(x => x.id === c.workerId);
-  const transcript = transcripts[c.id] || getDefaultTranscript(c.id);
+  const customer = customers.find(x => x.id === cForUi.customerId);
+  const worker = platformWorkers.find(x => x.id === cForUi.workerId);
+  const transcript = apiTranscript && apiTranscript.length > 0 ? apiTranscript : transcripts[cForUi.id] || getDefaultTranscript(cForUi.id);
+  const messageCount = apiTranscript !== null ? apiTranscript.length : cForUi.messagesCount;
+
+  const displayUserName = capitalizeFirstWordFirstLetter(apiUserName ?? cForUi.userName);
 
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-[1300px] mx-auto">
@@ -127,26 +239,24 @@ export default function ConversationDetail() {
           <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-foreground" onClick={() => navigate("/conversations")}>
             <ArrowLeft className="size-3.5 mr-1" /> Conversations
           </Button>
-          <span className="text-muted-foreground/30">/</span>
-          <span className="text-xs md:text-sm font-heading text-foreground">{c.id.toUpperCase()}</span>
         </div>
 
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="space-y-1.5">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-heading font-bold tracking-tight">{c.userName}</h1>
+              <h1 className="text-2xl font-heading font-bold tracking-tight">{displayUserName}</h1>
             </div>
             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1"><Calendar className="size-3" />{c.timestamp}</span>
-              <span className="flex items-center gap-1"><MessageSquare className="size-3" />{c.messagesCount} messages</span>
-              <span className="flex items-center gap-1">{c.channel === "Voice" ? <Phone className="size-3" /> : <Globe className="size-3" />}{c.channel}</span>
+              <span className="flex items-center gap-1"><Calendar className="size-3" />{cForUi.timestamp}</span>
+              <span className="flex items-center gap-1"><MessageSquare className="size-3" />{messageCount} messages</span>
+              <span className="flex items-center gap-1">{cForUi.channel === "Voice" ? <Phone className="size-3" /> : <Globe className="size-3" />}{cForUi.channel}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {c.satisfaction && (
+            {cForUi.satisfaction && (
               <div className="flex items-center gap-1 text-xs bg-qiko-warning/10 text-qiko-warning border border-qiko-warning/20 px-2 py-1 rounded-md">
                 <Star className="size-3 fill-current" />
-                {c.satisfaction}/5
+                {cForUi.satisfaction}/5
               </div>
             )}
           </div>
@@ -203,7 +313,7 @@ export default function ConversationDetail() {
                             {msg.text}
                           </div>
                           <div className={`flex items-center gap-2 text-[10px] text-muted-foreground/40 ${msg.role === "worker" ? "" : "justify-end"}`}>
-                            <span>{msg.time}</span>
+                            <span>{formatTranscriptDateTime(msg.time)}</span>
                             {msg.confidence !== undefined && (
                               <span className={`px-1.5 py-0.5 rounded ${
                                 msg.confidence >= 0.9 ? "bg-qiko-success/8 text-qiko-success" :
@@ -245,39 +355,39 @@ export default function ConversationDetail() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Building2 className="size-3.5" />Customer</span>
                       <button onClick={() => navigate(`/customers/${customer?.slug || ""}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
-                        {c.customerName} <ArrowUpRight className="size-2.5" />
+                        {apiUserName ?? cForUi.customerName} <ArrowUpRight className="size-2.5" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Bot className="size-3.5" />Worker</span>
-                      <button onClick={() => navigate(`/workers/${c.workerId}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
-                        {c.workerName} <ArrowUpRight className="size-2.5" />
+                      <button onClick={() => navigate(`/workers/${cForUi.workerId}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
+                        {apiWorkerName ?? cForUi.workerName} <ArrowUpRight className="size-2.5" />
                       </button>
                     </div>
                     {worker && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="size-3.5" />Worker Type</span>
-                        <span className="text-xs">{worker.type}</span>
+                        <span className="text-xs">{apiWorkerIndustry ?? worker.type}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1.5">{c.channel === "Voice" ? <Phone className="size-3.5" /> : <Globe className="size-3.5" />}Channel</span>
-                      <span className="text-xs">{c.channel}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5">{cForUi.channel === "Voice" ? <Phone className="size-3.5" /> : <Globe className="size-3.5" />}Channel</span>
+                      <span className="text-xs">{cForUi.channel}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Calendar className="size-3.5" />Started</span>
-                      <span className="text-xs tabular-nums">{c.timestamp}</span>
+                      <span className="text-xs tabular-nums">{formatTranscriptDateTime(apiStartedAt ?? cForUi.timestamp)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><MessageSquare className="size-3.5" />Messages</span>
-                      <span className="text-xs tabular-nums">{c.messagesCount}</span>
+                      <span className="text-xs tabular-nums">{messageCount}</span>
                     </div>
-                    {c.satisfaction && (
+                    {cForUi.satisfaction && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Star className="size-3.5" />Satisfaction</span>
                         <div className="flex items-center gap-1">
                           {Array.from({ length: 5 }).map((_, i) => (
-                            <Star key={i} className={`size-3 ${i < c.satisfaction! ? "text-qiko-warning fill-qiko-warning" : "text-muted-foreground/20"}`} />
+                            <Star key={i} className={`size-3 ${i < cForUi.satisfaction! ? "text-qiko-warning fill-qiko-warning" : "text-muted-foreground/20"}`} />
                           ))}
                         </div>
                       </div>
