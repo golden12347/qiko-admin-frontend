@@ -1,0 +1,27 @@
+import APIClient from "./apiClient";
+
+const adminUsersListClient = new APIClient("/api/v1/admin/admin-user-name", {
+  baseURL: "http://127.0.0.1:8000",
+});
+
+export interface AdminUserNameItem {
+  id?: number | string;
+  name?: string;
+  email?: string;
+  status?: boolean;
+  invite_status?: string;
+  created_at?: string;
+}
+
+interface AdminUsersListEnvelope {
+  message?: string;
+  data?: AdminUserNameItem[];
+}
+
+export async function adminUsersList(): Promise<AdminUserNameItem[]> {
+  const { data } = await adminUsersListClient.get<AdminUserNameItem[] | AdminUsersListEnvelope>();
+  const envelope = data as AdminUsersListEnvelope;
+  if (Array.isArray(envelope?.data)) return envelope.data;
+  return Array.isArray(data) ? data : [];
+}
+

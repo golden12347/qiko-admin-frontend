@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { adminLogin, adminLogout } from "@/services/adminAuthApi";
+import { adminSendInvite } from "@/services/adminUsersApi";
 import { setCredentials, clearAuth, type AdminUser } from "@/store/slices/authSlice";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
@@ -260,16 +261,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, message: "You must be logged in to invite users." };
     }
     const normalizedEmail = normalizeEmail(email);
-    const alreadyUser = storedUsers.some((u) => normalizeEmail(u.email) === normalizedEmail);
-    if (alreadyUser) {
-      return { ok: false, message: "This user already has access." };
-    }
 
-    const hasPendingInvite = invites.some(
-      (invite) => normalizeEmail(invite.email) === normalizedEmail && invite.status === "pending"
-    );
-    if (hasPendingInvite) {
-      return { ok: false, message: "A pending invite already exists for this email." };
+    try {
+      const invitePayload = {
+        name: name.trim(),
+        email: email.trim(),
+      };
+      await adminSendInvite({
+        name: invitePayload.name,
+        email: invitePayload.email,
+      });
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const message = ax?.response?.data?.message;
+      return {
+        ok: false,
+        message: typeof message === "string" ? message : "Failed to send invite.",
+      };
     }
 
     const now = new Date();
@@ -287,7 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       persistInvites([newInvite, ...invites]);
       return { ok: true, message: "Invite sent successfully." };
     },
-    [currentUser, storedUsers, invites]
+    [currentUser, invites]
   );
 
   const resendInvite = useCallback<AuthContextType["resendInvite"]>(

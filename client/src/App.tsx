@@ -24,6 +24,7 @@ const Alerts = lazy(() => import("./pages/Alerts"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const PasswordSet = lazy(() => import("./pages/PasswordSet"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 
 function PageLoader() {
@@ -55,8 +56,9 @@ function PublicAuthRoutes() {
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
         <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/password-set" component={PasswordSet} />
         <Route>
-          {location.startsWith("/login") || location.startsWith("/signup") || location.startsWith("/forgot-password")
+          {location.startsWith("/login") || location.startsWith("/signup") || location.startsWith("/forgot-password") || location.startsWith("/password-set")
             ? <NotFound />
             : <Login />}
         </Route>
@@ -106,7 +108,8 @@ function Router() {
   const isPublicAuthPath =
     location.startsWith("/login") ||
     location.startsWith("/signup") ||
-    location.startsWith("/forgot-password");
+    location.startsWith("/forgot-password") ||
+    location.startsWith("/password-set");
 
   return isPublicAuthPath ? <PublicAuthRoutes /> : <PrivateRoutes />;
 }

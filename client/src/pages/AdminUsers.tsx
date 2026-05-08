@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MailPlus, RefreshCw, UserRound, XCircle } from "lucide-react";
 import { AdminInvite, useAuth } from "@/contexts/AuthContext";
+import { adminUsersList, type AdminUserNameItem } from "@/services/adminUsersListApi";
 import { toast } from "sonner";
 
 const roleBadge: Record<string, string> = {
@@ -25,7 +26,14 @@ function formatDate(value?: string) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 export default function AdminUsers() {
@@ -33,8 +41,67 @@ export default function AdminUsers() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiLoaded, setApiLoaded] = useState(false);
+  const [apiRows, setApiRows] = useState<AdminUserNameItem[]>([]);
 
-  const pendingInvites = useMemo(() => invites.filter((invite) => invite.status === "pending"), [invites]);
+  const fetchAdminUsers = useCallback(async () => {
+    setApiLoading(true);
+    try {
+      const rows = await adminUsersList();
+      setApiRows(rows);
+      setApiLoaded(true);
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const message = ax?.response?.data?.message;
+      toast.error(typeof message === "string" ? message : "Failed to fetch admin users.");
+      setApiRows([]);
+      setApiLoaded(false);
+    } finally {
+      setApiLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await fetchAdminUsers();
+    })();
+  }, [fetchAdminUsers]);
+
+  const apiActiveUsers = useMemo(
+    () =>
+      apiRows
+        .filter((row) => row.status === true && String(row.invite_status ?? "").toLowerCase() === "accepted")
+        .map((row) => ({
+          id: String(row.id ?? crypto.randomUUID()),
+          name: String(row.name ?? "—"),
+          email: String(row.email ?? "—"),
+          role: "admin" as const,
+        })),
+    [apiRows]
+  );
+
+  const apiInvitationHistory = useMemo(
+    () =>
+      apiRows
+        .filter((row) => !(row.status === true && String(row.invite_status ?? "").toLowerCase() === "accepted"))
+        .map((row) => ({
+          id: String(row.id ?? crypto.randomUUID()),
+          name: String(row.name ?? "—"),
+          email: String(row.email ?? "—"),
+          status: String(row.invite_status ?? "pending").toLowerCase(),
+          invitedAt: String(row.created_at ?? ""),
+        })),
+    [apiRows]
+  );
+
+  const displayUsers = apiLoaded ? apiActiveUsers : users;
+  const displayInvites = apiLoaded ? apiInvitationHistory : invites;
+
+  const pendingInvites = useMemo(
+    () => displayInvites.filter((invite) => String((invite as { status?: string }).status ?? "").toLowerCase() === "pending"),
+    [displayInvites]
+  );
 
   async function handleInviteSubmit(e: FormEvent) {
     e.preventDefault();
@@ -50,6 +117,7 @@ export default function AdminUsers() {
     toast.success(result.message);
     setName("");
     setEmail("");
+    await fetchAdminUsers();
   }
 
   async function handleResend(invite: AdminInvite) {
@@ -120,8 +188,8 @@ export default function AdminUsers() {
 
       <Tabs defaultValue="users" className="space-y-4">
         <TabsList className="bg-secondary/40">
-          <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
-          <TabsTrigger value="invites">Invites ({invites.length})</TabsTrigger>
+          <TabsTrigger value="users">Users ({displayUsers.length})</TabsTrigger>
+          <TabsTrigger value="invites">Invites ({displayInvites.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -130,14 +198,19 @@ export default function AdminUsers() {
               <CardTitle className="text-base">Active Admin Users</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {users.map((user) => (
+              {apiLoading && (
+                <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
+                  Loading admin users...
+                </div>
+              )}
+              {!apiLoading && displayUsers.map((user) => (
                 <div key={user.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{user.name}</p>
                     <p className="text-xs text-muted-foreground">{user.email}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant="outline" className={roleBadge[user.role]}>
+                    <Badge variant="outline" className={roleBadge[(user as { role?: string }).role ?? "admin"]}>
                       {user.role}
                     </Badge>
                   </div>
@@ -154,13 +227,19 @@ export default function AdminUsers() {
               <CardDescription>{pendingInvites.length} pending invitations</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {invites.length === 0 && (
+              {!apiLoading && displayInvites.length === 0 && (
                 <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
                   No invitations sent yet.
                 </div>
               )}
 
-              {invites.map((invite) => (
+              {apiLoading && (
+                <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
+                  Loading invitation history...
+                </div>
+              )}
+
+              {!apiLoading && displayInvites.map((invite) => (
                 <div key={invite.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -170,7 +249,7 @@ export default function AdminUsers() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={inviteStatusBadge[invite.status]}>
+                      <Badge variant="outline" className={inviteStatusBadge[(invite as { status?: string }).status ?? "pending"]}>
                         <UserRound className="size-3 mr-1" />
                         {invite.status}
                       </Badge>
@@ -178,13 +257,13 @@ export default function AdminUsers() {
                   </div>
 
                   <div className="flex items-center justify-end gap-3">
-                    {invite.status === "pending" && (
+                    {!apiLoaded && invite.status === "pending" && (
                       <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleResend(invite)}>
+                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleResend(invite as AdminInvite)}>
                           <RefreshCw className="size-3.5" />
                           Resend
                         </Button>
-                        <Button variant="ghost" size="sm" className="gap-1.5 text-destructive" onClick={() => handleRevoke(invite)}>
+                        <Button variant="ghost" size="sm" className="gap-1.5 text-destructive" onClick={() => handleRevoke(invite as AdminInvite)}>
                           <XCircle className="size-3.5" />
                           Revoke
                         </Button>
