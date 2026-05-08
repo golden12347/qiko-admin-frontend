@@ -25,10 +25,8 @@ import {
   Phone,
   Download,
 } from "lucide-react";
-import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { adminWorkerList, type WorkerListApiResponse } from "@/services/adminWorkersApi";
-import { platformWorkers } from "@/lib/data";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -55,7 +53,6 @@ type WorkerChannel = "web" | "voice";
 
 interface WorkerRow {
   id: string;
-  detailWorkerId: string | null;
   agentName: string;
   customerName: string;
   type: string;
@@ -117,18 +114,9 @@ function normalizeWorker(item: unknown): WorkerRow {
 
   const totalConversationsFromApi = row.total_conversations;
   const createdAtFromApi = row.created_at;
-  const rawWorkerId = row.worker_id;
-  const matchedStaticWorker = platformWorkers.find(
-    (w) => w.name.toLowerCase() === agentName.toLowerCase()
-  );
-  const detailWorkerId =
-    typeof rawWorkerId === "string" && rawWorkerId.trim().length > 0
-      ? rawWorkerId
-      : matchedStaticWorker?.id ?? null;
 
   return {
     id: String(row.id ?? toSlug(agentName)),
-    detailWorkerId,
     agentName,
     customerName: String(row.user_name ?? row.customer_name ?? row.customerName ?? "—"),
     type: String(row.industry ?? row.type ?? "—"),
@@ -172,7 +160,6 @@ function formatCreatedAt(value: string): string {
 }
 
 export default function Workers() {
-  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [workersApi, setWorkersApi] = useState<WorkerRow[]>([]);
@@ -363,14 +350,7 @@ export default function Workers() {
               {!isLoading && filtered.map((w) => (
                 <TableRow
                   key={w.id}
-                  className="border-border/30 hover:bg-secondary/20 transition-colors cursor-pointer"
-                  onClick={() => {
-                    const fallbackWorkerId = platformWorkers[0]?.id;
-                    const targetWorkerId = w.detailWorkerId ?? fallbackWorkerId;
-                    if (targetWorkerId) {
-                      navigate(`/workers/${targetWorkerId}`);
-                    }
-                  }}
+                  className="border-border/30 hover:bg-secondary/20 transition-colors"
                 >
                   <TableCell>
                     <div className="flex items-center gap-2">

@@ -18,7 +18,6 @@ const Conversations = lazy(() => import("./pages/Conversations"));
 const Revenue = lazy(() => import("./pages/Revenue"));
 const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
 const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
-const WorkerDetail = lazy(() => import("./pages/WorkerDetail"));
 const ConversationDetail = lazy(() => import("./pages/ConversationDetail"));
 const Alerts = lazy(() => import("./pages/Alerts"));
 const Login = lazy(() => import("./pages/Login"));
@@ -87,7 +86,6 @@ function PrivateRoutes() {
           <Route path="/customers" component={Customers} />
           <Route path="/customers/:slug" component={CustomerDetail} />
           <Route path="/workers" component={Workers} />
-          <Route path="/workers/:id" component={WorkerDetail} />
           <Route path="/conversations" component={Conversations} />
           <Route path="/conversations/:id" component={ConversationDetail} />
           <Route path="/conversation-detail" component={ConversationDetail} />
