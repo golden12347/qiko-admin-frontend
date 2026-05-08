@@ -20,7 +20,6 @@ import {
   Globe,
   MessageSquare,
   Phone,
-  Star,
   Tag,
   User,
   ArrowUpRight,
@@ -253,12 +252,6 @@ export default function ConversationDetail() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {cForUi.satisfaction && (
-              <div className="flex items-center gap-1 text-xs bg-qiko-warning/10 text-qiko-warning border border-qiko-warning/20 px-2 py-1 rounded-md">
-                <Star className="size-3 fill-current" />
-                {cForUi.satisfaction}/5
-              </div>
-            )}
           </div>
         </div>
       </motion.div>
@@ -382,16 +375,6 @@ export default function ConversationDetail() {
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><MessageSquare className="size-3.5" />Messages</span>
                       <span className="text-xs tabular-nums">{messageCount}</span>
                     </div>
-                    {cForUi.satisfaction && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Star className="size-3.5" />Satisfaction</span>
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star key={i} className={`size-3 ${i < cForUi.satisfaction! ? "text-qiko-warning fill-qiko-warning" : "text-muted-foreground/20"}`} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>
