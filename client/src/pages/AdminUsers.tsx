@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MailPlus, RefreshCw, UserRound, XCircle } from "lucide-react";
 import { AdminInvite, useAuth } from "@/contexts/AuthContext";
 import { adminUsersList, type AdminUserNameItem } from "@/services/adminUsersListApi";
+import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 
 const roleBadge: Record<string, string> = {
@@ -38,6 +39,7 @@ function formatDate(value?: string) {
 
 export default function AdminUsers() {
   const { users, invites, sendInvite, resendInvite, revokeInvite } = useAuth();
+  const { filter } = useGlobalDateFilter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,7 +50,7 @@ export default function AdminUsers() {
   const fetchAdminUsers = useCallback(async () => {
     setApiLoading(true);
     try {
-      const rows = await adminUsersList();
+      const rows = await adminUsersList(filter);
       setApiRows(rows);
       setApiLoaded(true);
     } catch (err: unknown) {
@@ -60,7 +62,7 @@ export default function AdminUsers() {
     } finally {
       setApiLoading(false);
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     (async () => {

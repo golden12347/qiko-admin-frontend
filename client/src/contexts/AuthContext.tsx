@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { adminLogin, adminLogout } from "@/services/adminAuthApi";
+import { adminForgotPassword, adminLogin, adminLogout } from "@/services/adminAuthApi";
 import { adminSendInvite } from "@/services/adminUsersApi";
 import { setCredentials, clearAuth, type AdminUser } from "@/store/slices/authSlice";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -232,16 +232,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const forgotPassword = useCallback<AuthContextType["forgotPassword"]>(
     async (email) => {
     const normalizedEmail = normalizeEmail(email);
-    const exists = storedUsers.some((u) => normalizeEmail(u.email) === normalizedEmail);
-    if (!exists) {
-      return { ok: false, message: "No account found with that email." };
-    }
+    try {
+      const response = await adminForgotPassword({ email: normalizedEmail });
       return {
         ok: true,
-        message: "Password reset link sent (simulated). Connect this handler to your API provider.",
+        message: response?.message || "Password reset link sent.",
       };
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const message = ax?.response?.data?.message;
+      return {
+        ok: false,
+        message: typeof message === "string" ? message : "Failed to send reset link.",
+      };
+    }
     },
-    [storedUsers]
+    []
   );
 
   const logout = useCallback<AuthContextType["logout"]>(async () => {
