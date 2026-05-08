@@ -7,10 +7,15 @@ const overviewClient = new APIClient("/api/v1/admin/overview", {
 
 export interface OverviewApiResponse {
   total_users?: number;
+  total_users_percentage?: number | string;
   total_agents?: number;
+  total_agents_percentage?: number | string;
   total_conversations?: number;
+  total_conversations_percentage?: number | string;
   total_subscriptions?: number;
+  total_subscriptions_percentage?: number | string;
   total_earning?: number;
+  total_earning_percentage?: number | string;
   customer_conversations_users?: Array<{
     user_name?: string;
     total_conversations?: number;

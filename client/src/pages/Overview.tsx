@@ -41,7 +41,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
-  kpiTrends,
   customers,
   topCustomersByConversations,
   topCustomersByEarnings,
@@ -124,6 +123,13 @@ export default function Overview() {
     totalSubscriptions: 0,
     totalEarning: 0,
   });
+  const [overviewPercentages, setOverviewPercentages] = useState({
+    totalUsersPercentage: 0,
+    totalAgentsPercentage: 0,
+    totalConversationsPercentage: 0,
+    totalSubscriptionsPercentage: 0,
+    totalEarningPercentage: 0,
+  });
   const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
   const [overviewRevenueOverTime, setOverviewRevenueOverTime] = useState<Array<{ month: string; earning: number }>>([]);
   const [overviewTopCustomersByUsage, setOverviewTopCustomersByUsage] = useState<
@@ -147,6 +153,13 @@ export default function Overview() {
           totalConversations: toNumber(response.total_conversations),
           totalSubscriptions: toNumber(response.total_subscriptions),
           totalEarning: toNumber(response.total_earning),
+        });
+        setOverviewPercentages({
+          totalUsersPercentage: toNumber(response.total_users_percentage),
+          totalAgentsPercentage: toNumber(response.total_agents_percentage),
+          totalConversationsPercentage: toNumber(response.total_conversations_percentage),
+          totalSubscriptionsPercentage: toNumber(response.total_subscriptions_percentage),
+          totalEarningPercentage: toNumber(response.total_earning_percentage),
         });
         setOverviewConversationsTrend(
           Array.isArray(response.conversations_over_time)
@@ -184,6 +197,13 @@ export default function Overview() {
         );
       } catch {
         toast.error("Failed to fetch overview data.");
+        setOverviewPercentages({
+          totalUsersPercentage: 0,
+          totalAgentsPercentage: 0,
+          totalConversationsPercentage: 0,
+          totalSubscriptionsPercentage: 0,
+          totalEarningPercentage: 0,
+        });
       }
     })();
   }, [filter]);
@@ -214,15 +234,62 @@ export default function Overview() {
     bg: string;
     subtitle?: string;
   }> = [
-    { label: "Total Customers", value: overviewCounts.totalUsers, format: "number" as const, trend: kpiTrends.totalCustomers, icon: Users, color: "text-qiko-indigo", bg: "bg-qiko-indigo/10" },
-    { label: "Total Workers", value: overviewCounts.totalAgents, format: "number" as const, trend: kpiTrends.totalWorkers, icon: Bot, color: "text-qiko-cyan", bg: "bg-qiko-cyan/10" },
-    { label: "Total Conversations", value: overviewCounts.totalConversations, format: "number" as const, trend: kpiTrends.conversationsToday, icon: MessageSquare, color: "text-qiko-success", bg: "bg-qiko-success/10" },
-    { label: "Paid Subscribers", value: overviewCounts.totalSubscriptions, format: "number" as const, trend: { value: 4.2, direction: "up" as const }, icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-400/10" },
+    {
+      label: "Total Customers",
+      value: overviewCounts.totalUsers,
+      format: "number" as const,
+      trend: {
+        value: Math.abs(overviewPercentages.totalUsersPercentage),
+        direction: overviewPercentages.totalUsersPercentage >= 0 ? "up" as const : "down" as const,
+      },
+      icon: Users,
+      color: "text-qiko-indigo",
+      bg: "bg-qiko-indigo/10",
+    },
+    {
+      label: "Total Workers",
+      value: overviewCounts.totalAgents,
+      format: "number" as const,
+      trend: {
+        value: Math.abs(overviewPercentages.totalAgentsPercentage),
+        direction: overviewPercentages.totalAgentsPercentage >= 0 ? "up" as const : "down" as const,
+      },
+      icon: Bot,
+      color: "text-qiko-cyan",
+      bg: "bg-qiko-cyan/10",
+    },
+    {
+      label: "Total Conversations",
+      value: overviewCounts.totalConversations,
+      format: "number" as const,
+      trend: {
+        value: Math.abs(overviewPercentages.totalConversationsPercentage),
+        direction: overviewPercentages.totalConversationsPercentage >= 0 ? "up" as const : "down" as const,
+      },
+      icon: MessageSquare,
+      color: "text-qiko-success",
+      bg: "bg-qiko-success/10",
+    },
+    {
+      label: "Paid Subscribers",
+      value: overviewCounts.totalSubscriptions,
+      format: "number" as const,
+      trend: {
+        value: Math.abs(overviewPercentages.totalSubscriptionsPercentage),
+        direction: overviewPercentages.totalSubscriptionsPercentage >= 0 ? "up" as const : "down" as const,
+      },
+      icon: CreditCard,
+      color: "text-emerald-400",
+      bg: "bg-emerald-400/10",
+    },
     {
       label: "Total Revenue",
       value: overviewCounts.totalEarning,
       format: "currency" as const,
-      trend: kpiTrends.platformMRR,
+      trend: {
+        value: Math.abs(overviewPercentages.totalEarningPercentage),
+        direction: overviewPercentages.totalEarningPercentage >= 0 ? "up" as const : "down" as const,
+      },
       icon: DollarSign,
       color: "text-violet-400",
       bg: "bg-violet-400/10",

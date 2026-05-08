@@ -7,8 +7,11 @@ const revenueClient = new APIClient("/api/v1/admin/revenue", {
 
 export interface RevenueApiResponse {
   total_earning?: number | string;
+  total_earning_percentage?: number | string;
   average_revenue_per_user?: number | string;
+  average_revenue_per_user_percentage?: number | string;
   average_revenue_per_agent?: number | string;
+  average_revenue_per_agent_percentage?: number | string;
   top_customers_earnings?: Array<{
     user_name?: string;
     total_earnings?: number | string;

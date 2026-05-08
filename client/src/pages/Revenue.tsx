@@ -62,6 +62,11 @@ export default function Revenue() {
     averageRevenuePerUser: 0,
     averageRevenuePerAgent: 0,
   });
+  const [revenuePercentages, setRevenuePercentages] = useState({
+    totalEarningPercentage: 0,
+    averageRevenuePerUserPercentage: 0,
+    averageRevenuePerAgentPercentage: 0,
+  });
   const [revenueOverTimeApi, setRevenueOverTimeApi] = useState<Array<{ month: string; earning: number }>>([]);
   const [customerRevenueTableApi, setCustomerRevenueTableApi] = useState<
     Array<{ name: string; plan: string; totalRevenue: number; lastBilling: string }>
@@ -95,9 +100,33 @@ export default function Revenue() {
   }, [planDistributionApi]);
 
   const kpis = [
-    { label: "Total Revenue", value: `$${revenueCounts.totalEarning.toLocaleString()}`, trend: 14.2, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-400/10", sub: "All time" },
-    { label: "Avg Revenue / Customer", value: `$${revenueCounts.averageRevenuePerUser.toLocaleString()}`, trend: 5.2, icon: Users, color: "text-violet-400", bg: "bg-violet-400/10", sub: "Active accounts" },
-    { label: "Avg Revenue / Worker", value: `$${revenueCounts.averageRevenuePerAgent.toLocaleString()}`, trend: 8.7, icon: Zap, color: "text-qiko-success", bg: "bg-qiko-success/10", sub: "Live workers" },
+    {
+      label: "Total Revenue",
+      value: `$${revenueCounts.totalEarning.toLocaleString()}`,
+      trend: revenuePercentages.totalEarningPercentage,
+      icon: DollarSign,
+      color: "text-emerald-400",
+      bg: "bg-emerald-400/10",
+      sub: "All time",
+    },
+    {
+      label: "Avg Revenue / Customer",
+      value: `$${revenueCounts.averageRevenuePerUser.toLocaleString()}`,
+      trend: revenuePercentages.averageRevenuePerUserPercentage,
+      icon: Users,
+      color: "text-violet-400",
+      bg: "bg-violet-400/10",
+      sub: "Active accounts",
+    },
+    {
+      label: "Avg Revenue / Worker",
+      value: `$${revenueCounts.averageRevenuePerAgent.toLocaleString()}`,
+      trend: revenuePercentages.averageRevenuePerAgentPercentage,
+      icon: Zap,
+      color: "text-qiko-success",
+      bg: "bg-qiko-success/10",
+      sub: "Live workers",
+    },
   ];
 
   const sortedCustomers = useMemo(() => {
@@ -152,6 +181,11 @@ export default function Revenue() {
           totalEarning: toNumber(response.total_earning),
           averageRevenuePerUser: toNumber(response.average_revenue_per_user),
           averageRevenuePerAgent: toNumber(response.average_revenue_per_agent),
+        });
+        setRevenuePercentages({
+          totalEarningPercentage: toNumber(response.total_earning_percentage),
+          averageRevenuePerUserPercentage: toNumber(response.average_revenue_per_user_percentage),
+          averageRevenuePerAgentPercentage: toNumber(response.average_revenue_per_agent_percentage),
         });
         setRevenueOverTimeApi(
           Array.isArray(response.revenue_over_time)
@@ -242,6 +276,11 @@ export default function Revenue() {
           totalEarning: 0,
           averageRevenuePerUser: 0,
           averageRevenuePerAgent: 0,
+        });
+        setRevenuePercentages({
+          totalEarningPercentage: 0,
+          averageRevenuePerUserPercentage: 0,
+          averageRevenuePerAgentPercentage: 0,
         });
         setRevenueOverTimeApi([]);
         setCustomerRevenueTableApi([]);
