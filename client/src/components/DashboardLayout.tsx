@@ -4,7 +4,7 @@
 // Includes global command palette (Cmd+K) for cross-entity search
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
@@ -41,7 +41,6 @@ import {
   DollarSign,
   ChevronRight,
   Search,
-  Bell,
   CalendarRange,
   Building2,
   ArrowRight,
@@ -49,9 +48,11 @@ import {
   LogOut,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { customers, platformWorkers, platformConversations } from "@/lib/data";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
+import { adminWorkerList, type WorkerListApiResponse } from "@/services/adminWorkersApi";
+import { adminConversationList, type ConversationListApiResponse } from "@/services/adminConversationsApi";
 
 const mainNavItems = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
@@ -67,6 +68,96 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [cmdOpen, setCmdOpen] = useState(false);
   const { filter, setPreset, setCustomStartDate, setCustomEndDate, clearFilter } = useGlobalDateFilter();
   const { currentUser, logout } = useAuth();
+  const [searchCustomers, setSearchCustomers] = useState<Array<{ id: string; slug: string; name: string; industry: string; plan: string; status: string }>>([]);
+  const [searchWorkers, setSearchWorkers] = useState<Array<{ id: string; name: string; customerName: string; type: string; status: string }>>([]);
+  const [searchConversations, setSearchConversations] = useState<Array<{ id: string; userName: string; workerName: string; customerName: string; status: string }>>([]);
+
+  const extractArray = useCallback((payload: { data?: unknown; items?: unknown[]; customers?: unknown[]; workers?: unknown[]; conversations?: unknown[] }) => {
+    if (Array.isArray(payload.data)) return payload.data;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.customers)) return payload.customers;
+    if (Array.isArray(payload.workers)) return payload.workers;
+    if (Array.isArray(payload.conversations)) return payload.conversations;
+    const nested = payload.data as Record<string, unknown> | undefined;
+    if (!nested) return [];
+    if (Array.isArray(nested.data)) return nested.data;
+    if (Array.isArray(nested.items)) return nested.items;
+    if (Array.isArray(nested.customers)) return nested.customers;
+    if (Array.isArray(nested.workers)) return nested.workers;
+    if (Array.isArray(nested.conversations)) return nested.conversations;
+    return [];
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [customersRes, workersRes, conversationsRes] = await Promise.all([
+          adminCustomerList(1, filter),
+          adminWorkerList(1, filter),
+          adminConversationList(1, filter),
+        ]);
+
+        const normalizedCustomers = extractArray(customersRes as CustomerListApiResponse)
+          .map((item) => {
+            const row = (item ?? {}) as Record<string, unknown>;
+            const name = String(row.user_name ?? row.name ?? "—");
+            const slug =
+              String(row.slug ?? "").trim() ||
+              name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+            return {
+              id: String((row.id ?? row.user_id ?? slug) || crypto.randomUUID()),
+              slug: slug || "customer",
+              name,
+              industry: String(row.industry ?? "—"),
+              plan: String(row.subscription_plan_name ?? row.plan ?? "No plan"),
+              status: String(row.stripe_status ?? row.status ?? "unknown"),
+            };
+          })
+          .slice(0, 12);
+        setSearchCustomers(normalizedCustomers);
+
+        const normalizedWorkers = extractArray(workersRes as WorkerListApiResponse)
+          .map((item) => {
+            const row = (item ?? {}) as Record<string, unknown>;
+            return {
+              id: String(row.id ?? row.agent_id ?? crypto.randomUUID()),
+              name: String(row.agent_name ?? row.name ?? "—"),
+              customerName: String(row.user_name ?? row.customer_name ?? "—"),
+              type: String(row.industry ?? row.type ?? "—"),
+              status: String(row.status ?? "unknown"),
+            };
+          })
+          .slice(0, 12);
+        setSearchWorkers(normalizedWorkers);
+
+        const normalizedConversations = extractArray(conversationsRes as ConversationListApiResponse)
+          .map((item) => {
+            const row = (item ?? {}) as Record<string, unknown>;
+            const members = Array.isArray(row.members) ? (row.members as Record<string, unknown>[]) : [];
+            const adminMember = members.find((m) => String(m.role ?? "").toLowerCase() === "admin");
+            const nonAdminMember = members.find((m) => String(m.role ?? "").toLowerCase() !== "admin");
+            return {
+              id: String(row.id ?? row.conversation_id ?? crypto.randomUUID()),
+              userName: String(nonAdminMember?.agent_name ?? row.user_name ?? "—"),
+              workerName: String(adminMember?.agent_name ?? row.agent_name ?? "—"),
+              customerName: String(nonAdminMember?.user_name ?? row.customer_name ?? row.user_name ?? "—"),
+              status: String(row.status ?? "unknown"),
+            };
+          })
+          .slice(0, 12);
+        setSearchConversations(normalizedConversations);
+      } catch {
+        setSearchCustomers([]);
+        setSearchWorkers([]);
+        setSearchConversations([]);
+      }
+    })();
+  }, [extractArray, filter]);
+
+  const hasSearchResults = useMemo(
+    () => searchCustomers.length > 0 || searchWorkers.length > 0 || searchConversations.length > 0,
+    [searchConversations.length, searchCustomers.length, searchWorkers.length]
+  );
 
   // Global Cmd+K shortcut
   useEffect(() => {
@@ -257,25 +348,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <ArrowRight className="size-3 ml-auto text-muted-foreground/50" />
               </CommandItem>
             ))}
-            <CommandItem
-              onSelect={() => handleSelect("/alerts")}
-              className="gap-3"
-            >
-              <Bell className="size-4 text-muted-foreground" />
-              <span>Alerts & Incidents</span>
-              <ArrowRight className="size-3 ml-auto text-muted-foreground/50" />
-            </CommandItem>
           </CommandGroup>
 
           <CommandSeparator />
 
           {/* Customers */}
           <CommandGroup heading="Customers">
-            {customers.map((c) => (
+            {searchCustomers.map((c) => (
               <CommandItem
                 key={c.id}
                 value={`customer ${c.name} ${c.industry} ${c.plan}`}
-                onSelect={() => handleSelect(`/customers/${c.slug}`)}
+                onSelect={() => handleSelect(`/customers/${encodeURIComponent(c.slug)}?userId=${encodeURIComponent(c.id)}`)}
                 className="gap-3"
               >
                 <Building2 className="size-4 text-muted-foreground" />
@@ -286,9 +369,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Badge
                   variant="secondary"
                   className={`text-[10px] px-1.5 py-0 h-4 border-0 ${
-                    c.status === "Active" ? "bg-emerald-400/10 text-emerald-400" :
-                    c.status === "Trial" ? "bg-blue-400/10 text-blue-400" :
-                    c.status === "Churned" ? "bg-rose-400/10 text-rose-400" :
+                    String(c.status).toLowerCase() === "active" ? "bg-emerald-400/10 text-emerald-400" :
+                    String(c.status).toLowerCase() === "trial" ? "bg-blue-400/10 text-blue-400" :
+                    String(c.status).toLowerCase() === "churned" ? "bg-rose-400/10 text-rose-400" :
                     "bg-amber-400/10 text-amber-400"
                   }`}
                 >
@@ -296,17 +379,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Badge>
               </CommandItem>
             ))}
+            {searchCustomers.length === 0 && (
+              <CommandItem disabled className="text-xs text-muted-foreground">
+                No customers available
+              </CommandItem>
+            )}
           </CommandGroup>
 
           <CommandSeparator />
 
           {/* Workers */}
           <CommandGroup heading="Workers">
-            {platformWorkers.map((w) => (
+            {searchWorkers.map((w) => (
               <CommandItem
                 key={w.id}
                 value={`worker ${w.name} ${w.customerName} ${w.type}`}
-                onSelect={() => handleSelect(`/workers/${w.id}`)}
+                onSelect={() => handleSelect("/workers")}
                 className="gap-3"
               >
                 <Bot className="size-4 text-muted-foreground" />
@@ -317,9 +405,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Badge
                   variant="secondary"
                   className={`text-[10px] px-1.5 py-0 h-4 border-0 ${
-                    w.status === "Live" ? "bg-emerald-400/10 text-emerald-400" :
-                    w.status === "Training" ? "bg-blue-400/10 text-blue-400" :
-                    w.status === "Paused" ? "bg-amber-400/10 text-amber-400" :
+                    String(w.status).toLowerCase() === "live" || String(w.status).toLowerCase() === "ready" ? "bg-emerald-400/10 text-emerald-400" :
+                    String(w.status).toLowerCase() === "training" ? "bg-blue-400/10 text-blue-400" :
+                    String(w.status).toLowerCase() === "paused" ? "bg-amber-400/10 text-amber-400" :
                     "bg-rose-400/10 text-rose-400"
                   }`}
                 >
@@ -327,17 +415,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Badge>
               </CommandItem>
             ))}
+            {searchWorkers.length === 0 && (
+              <CommandItem disabled className="text-xs text-muted-foreground">
+                No workers available
+              </CommandItem>
+            )}
           </CommandGroup>
 
           <CommandSeparator />
 
           {/* Conversations */}
           <CommandGroup heading="Recent Conversations">
-            {platformConversations.slice(0, 8).map((conv) => (
+            {searchConversations.slice(0, 8).map((conv) => (
               <CommandItem
                 key={conv.id}
                 value={`conversation ${conv.id} ${conv.userName} ${conv.workerName} ${conv.customerName}`}
-                onSelect={() => handleSelect(`/conversations/${conv.id}`)}
+                onSelect={() => handleSelect(`/conversation-detail?conversationId=${encodeURIComponent(conv.id)}`)}
                 className="gap-3"
               >
                 <Hash className="size-4 text-muted-foreground" />
@@ -348,9 +441,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Badge
                   variant="secondary"
                   className={`text-[10px] px-1.5 py-0 h-4 border-0 ${
-                    conv.status === "Completed" ? "bg-emerald-400/10 text-emerald-400" :
-                    conv.status === "Active" ? "bg-blue-400/10 text-blue-400" :
-                    conv.status === "Escalated" ? "bg-amber-400/10 text-amber-400" :
+                    String(conv.status).toLowerCase() === "completed" ? "bg-emerald-400/10 text-emerald-400" :
+                    String(conv.status).toLowerCase() === "active" ? "bg-blue-400/10 text-blue-400" :
+                    String(conv.status).toLowerCase() === "escalated" ? "bg-amber-400/10 text-amber-400" :
                     "bg-rose-400/10 text-rose-400"
                   }`}
                 >
@@ -358,7 +451,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Badge>
               </CommandItem>
             ))}
+            {searchConversations.length === 0 && (
+              <CommandItem disabled className="text-xs text-muted-foreground">
+                No conversations available
+              </CommandItem>
+            )}
           </CommandGroup>
+          {!hasSearchResults && (
+            <>
+              <CommandSeparator />
+              <CommandGroup heading="Info">
+                <CommandItem disabled className="text-xs text-muted-foreground">
+                  Search data will appear after API responds.
+                </CommandItem>
+              </CommandGroup>
+            </>
+          )}
         </CommandList>
       </CommandDialog>
     </SidebarProvider>
@@ -374,7 +482,6 @@ function Breadcrumb({ location }: { location: string }) {
     conversations: "Conversations",
     revenue: "Revenue",
     activity: "Activity Logs",
-    alerts: "Alerts & Incidents",
   };
 
   if (segments.length === 0) {

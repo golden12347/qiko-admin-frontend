@@ -19,7 +19,6 @@ const Revenue = lazy(() => import("./pages/Revenue"));
 const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
 const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
 const ConversationDetail = lazy(() => import("./pages/ConversationDetail"));
-const Alerts = lazy(() => import("./pages/Alerts"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
@@ -91,7 +90,6 @@ function PrivateRoutes() {
           <Route path="/conversation-detail" component={ConversationDetail} />
           <Route path="/revenue" component={Revenue} />
           <Route path="/activity" component={ActivityLogs} />
-          <Route path="/alerts" component={Alerts} />
           <Route path="/admin-users" component={AdminUsers} />
           <Route path="/404" component={NotFound} />
           <Route component={NotFound} />
