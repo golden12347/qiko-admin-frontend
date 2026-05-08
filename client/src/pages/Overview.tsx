@@ -45,7 +45,6 @@ import {
   customers,
   topCustomersByConversations,
   topCustomersByEarnings,
-  revenueHistory,
   customerGrowthTrend,
   recentCustomerActivity,
   recentWorkerActivity,
@@ -72,6 +71,16 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^0-9.-]/g, "");
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
 /* ── derived KPIs ──────────────────────────────────────────── */
 const paidSubscribers = customers.filter(c => c.status === "Active" && c.mrr > 0).length;
 const monthlyEarnings = customers.reduce((sum, c) => sum + c.mrr, 0);
@@ -86,6 +95,7 @@ const tooltipStyle = {
 };
 
 const axisTickStyle = { fontSize: 11, fill: "rgba(255,255,255,0.4)" };
+
 
 /* ── alert type config ─────────────────────────────────────── */
 const alertTypeConfig: Record<string, { icon: React.ReactNode; color: string; bg: string; label: string }> = {
@@ -112,10 +122,15 @@ export default function Overview() {
     totalAgents: 0,
     totalConversations: 0,
     totalSubscriptions: 0,
+    totalEarning: 0,
   });
   const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
+  const [overviewRevenueOverTime, setOverviewRevenueOverTime] = useState<Array<{ month: string; earning: number }>>([]);
   const [overviewTopCustomersByUsage, setOverviewTopCustomersByUsage] = useState<
     Array<{ name: string; conversations: number }>
+  >([]);
+  const [overviewTopCustomersByEarnings, setOverviewTopCustomersByEarnings] = useState<
+    Array<{ name: string; plan: string; workers: number; earnings: number }>
   >([]);
 
   useEffect(() => {
@@ -127,10 +142,11 @@ export default function Overview() {
       try {
         const response = await adminOverview();
         setOverviewCounts({
-          totalUsers: Number(response.total_users ?? 0),
-          totalAgents: Number(response.total_agents ?? 0),
-          totalConversations: Number(response.total_conversations ?? 0),
-          totalSubscriptions: Number(response.total_subscriptions ?? 0),
+          totalUsers: toNumber(response.total_users),
+          totalAgents: toNumber(response.total_agents),
+          totalConversations: toNumber(response.total_conversations),
+          totalSubscriptions: toNumber(response.total_subscriptions),
+          totalEarning: toNumber(response.total_earning),
         });
         setOverviewConversationsTrend(
           Array.isArray(response.conversations_over_time)
@@ -145,6 +161,24 @@ export default function Overview() {
             ? response.customer_conversations_users.map((item) => ({
                 name: String(item.user_name ?? "—"),
                 conversations: Number(item.total_conversations ?? 0),
+              }))
+            : []
+        );
+        setOverviewRevenueOverTime(
+          Array.isArray(response.revenue_over_time)
+            ? response.revenue_over_time.map((item) => ({
+                month: String(item.month ?? "—"),
+                earning: toNumber(item.earning),
+              }))
+            : []
+        );
+        setOverviewTopCustomersByEarnings(
+          Array.isArray(response.top_customers_earnings)
+            ? response.top_customers_earnings.map((item) => ({
+                name: String(item.user_name ?? "—"),
+                workers: toNumber(item.agents_count),
+                plan: String(item.subscription_plan_name ?? "—"),
+                earnings: toNumber(item.total_earnings),
               }))
             : []
         );
@@ -163,7 +197,7 @@ export default function Overview() {
   );
   const conversationsChartData =
     filteredConversationsTrend.length > 0 ? filteredConversationsTrend : overviewConversationsTrend;
-  const filteredRevenueHistory = revenueHistory.filter((point) =>
+  const filteredRevenueHistory = overviewRevenueOverTime.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
   const filteredCustomerGrowthTrend = customerGrowthTrend.filter((point) =>
@@ -184,7 +218,15 @@ export default function Overview() {
     { label: "Total Workers", value: overviewCounts.totalAgents, format: "number" as const, trend: kpiTrends.totalWorkers, icon: Bot, color: "text-qiko-cyan", bg: "bg-qiko-cyan/10" },
     { label: "Total Conversations", value: overviewCounts.totalConversations, format: "number" as const, trend: kpiTrends.conversationsToday, icon: MessageSquare, color: "text-qiko-success", bg: "bg-qiko-success/10" },
     { label: "Paid Subscribers", value: overviewCounts.totalSubscriptions, format: "number" as const, trend: { value: 4.2, direction: "up" as const }, icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-400/10" },
-    { label: "Monthly Earnings", value: monthlyEarnings, format: "currency" as const, trend: kpiTrends.platformMRR, icon: DollarSign, color: "text-violet-400", bg: "bg-violet-400/10" },
+    {
+      label: "Total Revenue",
+      value: overviewCounts.totalEarning,
+      format: "currency" as const,
+      trend: kpiTrends.platformMRR,
+      icon: DollarSign,
+      color: "text-violet-400",
+      bg: "bg-violet-400/10",
+    },
   ];
 
   return (
@@ -277,10 +319,9 @@ export default function Overview() {
           <Card className="bg-card/80 border-border/40">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Revenue Over Time (MRR)</CardTitle>
+                <CardTitle className="text-sm font-medium">Revenue Over Time (Earning)</CardTitle>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400" />MRR</span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-400" />New MRR</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400" />Earning</span>
                 </div>
               </div>
             </CardHeader>
@@ -293,17 +334,12 @@ export default function Overview() {
                         <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
                         <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
                       </linearGradient>
-                      <linearGradient id="newMrrGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#A78BFA" stopOpacity={0.25} />
-                        <stop offset="100%" stopColor="#A78BFA" stopOpacity={0} />
-                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
                     <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, name === "mrr" ? "MRR" : name === "newMrr" ? "New MRR" : name]} />
-                    <Area type="monotone" dataKey="mrr" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />
-                    <Area type="monotone" dataKey="newMrr" stroke="#A78BFA" strokeWidth={1.5} fill="url(#newMrrGrad)" strokeDasharray="4 2" />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
+                    <Area type="monotone" dataKey="earning" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -381,13 +417,13 @@ export default function Overview() {
           <Card className="bg-card/80 border-border/40 h-full">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Top Customers by Earnings</CardTitle>
+                <CardTitle className="text-sm font-medium">Top Customers by Revenue</CardTitle>
                 <a href="/revenue" className="text-xs text-qiko-indigo hover:underline flex items-center gap-0.5">View all <ChevronRight className="size-3" /></a>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
               <div className="space-y-3">
-                {topCustomersByEarnings.slice(0, 5).map((c, i) => (
+                {overviewTopCustomersByEarnings.slice(0, 5).map((c, i) => (
                   <div key={c.name} className="flex items-center gap-3 group cursor-pointer">
                     <span className="text-xs text-muted-foreground w-4 tabular-nums font-medium">{i + 1}</span>
                     <div className="flex-1 min-w-0">
@@ -398,13 +434,18 @@ export default function Overview() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold tabular-nums">${c.mrr.toLocaleString()}</p>
+                      <p className="text-sm font-semibold tabular-nums">${c.earnings.toLocaleString()}</p>
                       <p className="text-[10px] text-qiko-success flex items-center gap-0.5 justify-end">
-                        <TrendingUp className="size-2.5" />{c.trend}%
+                        <TrendingUp className="size-2.5" />{topCustomersByEarnings[i]?.trend ?? 0}%
                       </p>
                     </div>
                   </div>
                 ))}
+                {overviewTopCustomersByEarnings.length === 0 && (
+                  <div className="text-xs text-muted-foreground py-6 text-center">
+                    No customer earnings data found.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

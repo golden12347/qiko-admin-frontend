@@ -4,7 +4,7 @@
 // Design: Dark Lattice — Qiko brand tokens
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,10 +20,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  revenueKPIs, mrrTrend,
+  mrrTrend,
   topAccountsByRevenue, customers, platformWorkers,
 } from "@/lib/data";
 import { isDateInGlobalRange, parseDateValue, useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import { adminRevenue } from "@/services/adminRevenueApi";
+import { toast } from "sonner";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -34,7 +36,7 @@ const fadeUp = {
 };
 
 type SortDir = "asc" | "desc" | null;
-type CustomerSortKey = "name" | "plan" | "totalRevenue" | "mrr" | "lastBilling";
+type CustomerSortKey = "name" | "plan" | "totalRevenue" | "lastBilling";
 
 const planBadgeColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
@@ -50,9 +52,40 @@ const tooltipStyle = {
   color: "#e2e8f0",
 };
 
+function fmt(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return n.toLocaleString();
+}
+
 export default function Revenue() {
   const { filter } = useGlobalDateFilter();
   const [custSort, setCustSort] = useState<{ key: CustomerSortKey; dir: SortDir }>({ key: "totalRevenue", dir: "desc" });
+  const [revenueCounts, setRevenueCounts] = useState({
+    totalEarning: 0,
+    averageRevenuePerUser: 0,
+    averageRevenuePerAgent: 0,
+  });
+  const [revenueOverTimeApi, setRevenueOverTimeApi] = useState<Array<{ month: string; earning: number }>>([]);
+  const [customerRevenueTableApi, setCustomerRevenueTableApi] = useState<
+    Array<{ name: string; plan: string; totalRevenue: number; lastBilling: string }>
+  >([]);
+  const [topCustomersByRevenueApi, setTopCustomersByRevenueApi] = useState<
+    Array<{ name: string; amount: number }>
+  >([]);
+  const [planDistributionApi, setPlanDistributionApi] = useState<
+    Array<{ plan: "Basic" | "Premium" | "Enterprise"; customers: number; mrr: number }>
+  >([]);
+
+  function toNumber(value: unknown, fallback = 0): number {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const normalized = value.replace(/[^0-9.-]/g, "");
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return fallback;
+  }
 
   function getDisplayPlan(plan: string): "Basic" | "Premium" | "Enterprise" {
     if (plan === "Enterprise") return "Enterprise";
@@ -60,18 +93,10 @@ export default function Revenue() {
     return "Basic";
   }
 
-  const customerRevenueData = useMemo(() => {
-    return customers.map((c) => ({
-      name: c.name,
-      slug: c.slug,
-      plan: getDisplayPlan(c.plan),
-      totalRevenue: c.totalEarnings,
-      mrr: c.mrr,
-      lastBilling: c.status === "Active" ? "Mar 1, 2026" : c.status === "Trial" ? "Trial" : c.status === "Churned" ? "Cancelled" : "Suspended",
-    }));
-  }, []);
+  const customerRevenueData = useMemo(() => customerRevenueTableApi, [customerRevenueTableApi]);
 
   const normalizedPlanDistribution = useMemo(() => {
+    if (planDistributionApi.length > 0) return planDistributionApi;
     const buckets: Record<"Basic" | "Premium" | "Enterprise", { customers: number; mrr: number }> = {
       Basic: { customers: 0, mrr: 0 },
       Premium: { customers: 0, mrr: 0 },
@@ -89,7 +114,7 @@ export default function Revenue() {
       { plan: "Premium", customers: buckets.Premium.customers, mrr: buckets.Premium.mrr },
       { plan: "Enterprise", customers: buckets.Enterprise.customers, mrr: buckets.Enterprise.mrr },
     ];
-  }, []);
+  }, [planDistributionApi]);
 
   const sortedCustomers = useMemo(() => {
     const data = [...customerRevenueData];
@@ -107,8 +132,19 @@ export default function Revenue() {
   }, [customerRevenueData, custSort]);
 
   const filteredMrrTrend = useMemo(
-    () => mrrTrend.filter((point) => isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)),
-    [filter]
+    () =>
+      revenueOverTimeApi.filter((point) =>
+        isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
+      ),
+    [filter, revenueOverTimeApi]
+  );
+  const filteredRevenueOverTime = useMemo(
+    () =>
+      filteredMrrTrend.map((point) => ({
+        month: point.month,
+        earning: point.earning,
+      })),
+    [filteredMrrTrend]
   );
 
   function toggleCustSort(key: CustomerSortKey) {
@@ -126,18 +162,135 @@ export default function Revenue() {
 
   // Computed totals
   const totalRevenue = customers.reduce((s, c) => s + c.totalEarnings, 0);
-  const totalMRR = customers.reduce((s, c) => s + c.mrr, 0);
   const activeCustomers = customers.filter((c) => c.status === "Active").length;
   const avgRevenuePerCustomer = activeCustomers > 0 ? Math.round(totalRevenue / activeCustomers) : 0;
   const activeWorkers = platformWorkers.filter((w) => w.status === "Live").length;
   const avgRevenuePerWorker = activeWorkers > 0 ? Math.round(totalRevenue / activeWorkers) : 0;
 
   const kpis = [
-    { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, trend: 14.2, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-400/10", sub: "All time" },
-    { label: "Monthly Recurring Revenue", value: `$${totalMRR.toLocaleString()}`, trend: revenueKPIs.mrrGrowth, icon: TrendingUp, color: "text-qiko-indigo", bg: "bg-qiko-indigo/10", sub: "Current month" },
-    { label: "Avg Revenue / Customer", value: `$${avgRevenuePerCustomer.toLocaleString()}`, trend: 5.2, icon: Users, color: "text-violet-400", bg: "bg-violet-400/10", sub: "Active accounts" },
-    { label: "Avg Revenue / Worker", value: `$${avgRevenuePerWorker.toLocaleString()}`, trend: 8.7, icon: Zap, color: "text-qiko-success", bg: "bg-qiko-success/10", sub: "Live workers" },
+    { label: "Total Revenue", value: `$${(revenueCounts.totalEarning || totalRevenue).toLocaleString()}`, trend: 14.2, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-400/10", sub: "All time" },
+    { label: "Avg Revenue / Customer", value: `$${(revenueCounts.averageRevenuePerUser || avgRevenuePerCustomer).toLocaleString()}`, trend: 5.2, icon: Users, color: "text-violet-400", bg: "bg-violet-400/10", sub: "Active accounts" },
+    { label: "Avg Revenue / Worker", value: `$${(revenueCounts.averageRevenuePerAgent || avgRevenuePerWorker).toLocaleString()}`, trend: 8.7, icon: Zap, color: "text-qiko-success", bg: "bg-qiko-success/10", sub: "Live workers" },
   ];
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await adminRevenue();
+        setRevenueCounts({
+          totalEarning: toNumber(response.total_earning),
+          averageRevenuePerUser: toNumber(response.average_revenue_per_user),
+          averageRevenuePerAgent: toNumber(response.average_revenue_per_agent),
+        });
+        setRevenueOverTimeApi(
+          Array.isArray(response.revenue_over_time)
+            ? response.revenue_over_time.map((item) => ({
+                month: String(
+                  item.month ??
+                  (item as Record<string, unknown>).label ??
+                  (item as Record<string, unknown>).period ??
+                  (item as Record<string, unknown>).date ??
+                  "—"
+                ),
+                earning: toNumber(
+                  item.earning ??
+                  (item as Record<string, unknown>).total_earning ??
+                  (item as Record<string, unknown>).total_earnings ??
+                  (item as Record<string, unknown>).revenue ??
+                  (item as Record<string, unknown>).mrr
+                ),
+              }))
+            : []
+        );
+        setCustomerRevenueTableApi(
+          Array.isArray(response.customer_revenue_table)
+            ? response.customer_revenue_table.map((item) => {
+                const row = item as Record<string, unknown>;
+                const subscriptionPlans = Array.isArray(row.subscription_plans)
+                  ? (row.subscription_plans as Array<Record<string, unknown>>)
+                  : [];
+                const firstPlan = subscriptionPlans[0] ?? {};
+
+                return {
+                  name: String(item.user_name ?? "—"),
+                  plan: String(
+                    firstPlan.plan_name ??
+                    firstPlan.subscription_plan_name ??
+                    item.plan_name ??
+                    row.subscription_plan_name ??
+                    row.plan ??
+                    "—"
+                  ),
+                  totalRevenue: toNumber(item.total_earnings),
+                  lastBilling: String(
+                    firstPlan.plan_created_at ??
+                    firstPlan.created_at ??
+                    item.plan_created_at ??
+                    row.created_at ??
+                    row.updated_at ??
+                    row.last_billing ??
+                    "—"
+                  ),
+                };
+              })
+            : []
+        );
+        setTopCustomersByRevenueApi(
+          Array.isArray(response.top_customers_earnings)
+            ? response.top_customers_earnings.map((item) => ({
+                name: String(item.user_name ?? "—"),
+                amount: toNumber(item.total_earnings),
+              }))
+            : []
+        );
+        const planDistribution = response.plan_distribution;
+        if (planDistribution && typeof planDistribution === "object") {
+          setPlanDistributionApi([
+            {
+              plan: "Basic",
+              customers: toNumber(planDistribution.basic),
+              mrr: toNumber(planDistribution.basic_total_amount),
+            },
+            {
+              plan: "Premium",
+              customers: toNumber(planDistribution.premium),
+              mrr: toNumber(planDistribution.premium_total_amount),
+            },
+            {
+              plan: "Enterprise",
+              customers: toNumber(planDistribution.enterprise),
+              mrr: toNumber(planDistribution.enterprise_total_amount),
+            },
+          ]);
+        } else {
+          setPlanDistributionApi([]);
+        }
+      } catch {
+        toast.error("Failed to fetch revenue data.");
+        setRevenueCounts({
+          totalEarning: 0,
+          averageRevenuePerUser: 0,
+          averageRevenuePerAgent: 0,
+        });
+        setRevenueOverTimeApi(mrrTrend.map((point) => ({ month: point.month, earning: point.mrr })));
+        setCustomerRevenueTableApi(
+          customers.map((c) => ({
+            name: c.name,
+            plan: getDisplayPlan(c.plan),
+            totalRevenue: c.totalEarnings,
+            lastBilling: c.status === "Active" ? "Mar 1, 2026" : c.status === "Trial" ? "Trial" : c.status === "Churned" ? "Cancelled" : "Suspended",
+          }))
+        );
+        setTopCustomersByRevenueApi(
+          topAccountsByRevenue.map((acct) => ({
+            name: acct.name,
+            amount: acct.mrr,
+          }))
+        );
+        setPlanDistributionApi([]);
+      }
+    })();
+  }, []);
 
   return (
     <div className="p-6 space-y-6">
@@ -180,28 +333,28 @@ export default function Revenue() {
         <motion.div className="lg:col-span-2" custom={6} variants={fadeUp} initial="hidden" animate="visible">
           <Card className="bg-card/80 border-border/40">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Revenue Trend</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Revenue Over Time (Earning)</CardTitle>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400" />Earning</span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="pt-0">
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredMrrTrend} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                  <AreaChart data={filteredRevenueOverTime} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
                     <defs>
                       <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
                         <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
                       </linearGradient>
-                      <linearGradient id="newMrrGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
-                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="month" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, name === "mrr" ? "MRR" : name === "newMrr" ? "New MRR" : name]} />
-                    <Area type="monotone" dataKey="mrr" name="MRR" stroke="#10B981" strokeWidth={2} fill="url(#mrrGrad)" />
-                    <Area type="monotone" dataKey="newMrr" name="New MRR" stroke="#6366F1" strokeWidth={1.5} fill="url(#newMrrGrad)" />
+                    <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
+                    <Area type="monotone" dataKey="earning" name="Earning" stroke="#10B981" strokeWidth={2} fill="url(#mrrGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -217,9 +370,9 @@ export default function Revenue() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="space-y-3">
-                {topAccountsByRevenue.slice(0, 8).map((acct, i) => {
-                  const maxRev = topAccountsByRevenue[0].mrr;
-                  const pct = (acct.mrr / maxRev) * 100;
+                {topCustomersByRevenueApi.slice(0, 8).map((acct, i) => {
+                  const maxRev = topCustomersByRevenueApi[0]?.amount || 1;
+                  const pct = (acct.amount / maxRev) * 100;
                   return (
                     <div key={acct.name} className="group">
                       <div className="flex items-center justify-between mb-1">
@@ -227,7 +380,7 @@ export default function Revenue() {
                           <span className="text-[10px] text-muted-foreground/50 w-4 tabular-nums">{i + 1}</span>
                           <span className="text-xs font-medium truncate max-w-[120px]">{acct.name}</span>
                         </div>
-                        <span className="text-xs font-medium tabular-nums">${acct.mrr.toLocaleString()}/mo</span>
+                        <span className="text-xs font-medium tabular-nums">${acct.amount.toLocaleString()}/mo</span>
                       </div>
                       <div className="ml-6 h-1.5 rounded-full bg-secondary/30 overflow-hidden">
                         <div
@@ -262,7 +415,6 @@ export default function Revenue() {
                       { key: "name" as CustomerSortKey, label: "Customer", align: "text-left" },
                       { key: "plan" as CustomerSortKey, label: "Plan", align: "text-left" },
                       { key: "totalRevenue" as CustomerSortKey, label: "Total Revenue", align: "text-right" },
-                      { key: "mrr" as CustomerSortKey, label: "MRR", align: "text-right" },
                       { key: "lastBilling" as CustomerSortKey, label: "Last Billing", align: "text-right" },
                     ].map((col) => (
                       <TableHead
@@ -291,9 +443,6 @@ export default function Revenue() {
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-sm font-medium">
                         ${c.totalRevenue.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm font-medium text-qiko-success">
-                        ${c.mrr.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">{c.lastBilling}</TableCell>
                     </TableRow>
