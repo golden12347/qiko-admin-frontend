@@ -1,4 +1,5 @@
 import APIClient from "./apiClient";
+import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 
 const customerListClient = new APIClient("/api/v1/admin/customer-list", {
   baseURL: "http://127.0.0.1:8000",
@@ -26,8 +27,14 @@ export interface CustomerListApiResponse {
  * Fetch paginated admin customer list.
  * Uses same APIClient pattern as login/logout endpoints.
  */
-export async function adminCustomerList(page: number): Promise<CustomerListApiResponse> {
-  const { data } = await customerListClient.get<CustomerListApiResponse>({ page });
+export async function adminCustomerList(
+  page: number,
+  filter?: ApiDateFilterStateLike
+): Promise<CustomerListApiResponse> {
+  const { data } = await customerListClient.get<CustomerListApiResponse>({
+    page,
+    ...buildDateFilterParams(filter),
+  });
   return data;
 }
 

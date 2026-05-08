@@ -140,7 +140,7 @@ export default function Overview() {
   useEffect(() => {
     (async () => {
       try {
-        const response = await adminOverview();
+        const response = await adminOverview(filter);
         setOverviewCounts({
           totalUsers: toNumber(response.total_users),
           totalAgents: toNumber(response.total_agents),
@@ -186,7 +186,7 @@ export default function Overview() {
         toast.error("Failed to fetch overview data.");
       }
     })();
-  }, []);
+  }, [filter]);
 
   const filteredAlerts = alertFilter === "all"
     ? platformAlerts
@@ -286,29 +286,35 @@ export default function Overview() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="h-[240px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
-                    <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), "Conversations"]} />
-                    <Area
-                      type="monotone"
-                      dataKey="conversations"
-                      stroke="#6366F1"
-                      strokeWidth={2}
-                      fill="url(#convGrad)"
-                      dot={{ r: 3, fill: "#6366F1", strokeWidth: 0 }}
-                      activeDot={{ r: 4, fill: "#6366F1" }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {conversationsChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
+                      <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), "Conversations"]} />
+                      <Area
+                        type="monotone"
+                        dataKey="conversations"
+                        stroke="#6366F1"
+                        strokeWidth={2}
+                        fill="url(#convGrad)"
+                        dot={{ r: 3, fill: "#6366F1", strokeWidth: 0 }}
+                        activeDot={{ r: 4, fill: "#6366F1" }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No data available for selected filter.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -327,21 +333,27 @@ export default function Overview() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="h-[240px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
-                    <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
-                    <Area type="monotone" dataKey="earning" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {filteredRevenueHistory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
+                      <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
+                      <Area type="monotone" dataKey="earning" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No data available for selected filter.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -358,16 +370,22 @@ export default function Overview() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="h-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={filteredCustomerGrowthTrend} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickFormatter={(v: string) => v.split(" ")[0].slice(0, 3)} />
-                    <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [value, name === "newCustomers" ? "New" : "Churned"]} />
-                    <Bar dataKey="newCustomers" fill="#34D399" radius={[3, 3, 0, 0]} barSize={14} name="newCustomers" />
-                    <Bar dataKey="churnedCustomers" fill="#F87171" radius={[3, 3, 0, 0]} barSize={14} name="churnedCustomers" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {filteredCustomerGrowthTrend.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={filteredCustomerGrowthTrend} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickFormatter={(v: string) => v.split(" ")[0].slice(0, 3)} />
+                      <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [value, name === "newCustomers" ? "New" : "Churned"]} />
+                      <Bar dataKey="newCustomers" fill="#34D399" radius={[3, 3, 0, 0]} barSize={14} name="newCustomers" />
+                      <Bar dataKey="churnedCustomers" fill="#F87171" radius={[3, 3, 0, 0]} barSize={14} name="churnedCustomers" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No data available for selected filter.
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-center gap-6 mt-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400" />New</span>

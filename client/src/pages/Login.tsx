@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -13,6 +14,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -51,33 +53,35 @@ export default function Login() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
-          <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="mt-4 flex items-center text-xs text-muted-foreground">
             <Link href="/forgot-password" className="hover:text-foreground transition-colors">
               Forgot password?
             </Link>
-            <span>
-              New here?{" "}
-              <Link href="/signup" className="text-qiko-indigo hover:underline">
-                Create account
-              </Link>
-            </span>
           </div>
-          <p className="mt-4 text-[11px] text-muted-foreground/80">
-            Sign in with your admin API credentials (backend at <span className="font-mono">127.0.0.1:8002</span>).
-          </p>
         </CardContent>
       </Card>
     </div>

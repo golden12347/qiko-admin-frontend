@@ -17,11 +17,10 @@ import {
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { adminConversationList, type ConversationListApiResponse } from "@/services/adminConversationsApi";
-import { platformConversations } from "@/lib/data";
+import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 
 interface ConversationRow {
   id: string;
-  detailConversationId: string;
   customerName: string; // requirement: user_name
   workerName: string;   // requirement: agent_name
   userName: string;
@@ -105,18 +104,10 @@ function normalizeConversation(item: unknown): ConversationRow {
     "—"
   );
 
-  const staticFallback = platformConversations.find(
-    (c) =>
-      c.workerName.toLowerCase() === workerName.toLowerCase() ||
-      c.userName.toLowerCase() === userName.toLowerCase()
-  );
-
   const rawId = String(row.id ?? row.conversation_id ?? slugify(`${workerName}-${customerName}`));
-  const detailConversationId = staticFallback?.id ?? platformConversations[0]?.id ?? "conv-001";
 
   return {
     id: rawId,
-    detailConversationId,
     workerName,
     customerName,
     userName,
@@ -136,6 +127,7 @@ function normalizeConversation(item: unknown): ConversationRow {
 
 export default function Conversations() {
   const [, navigate] = useLocation();
+  const { filter } = useGlobalDateFilter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<ConversationRow[]>([]);
@@ -146,7 +138,7 @@ export default function Conversations() {
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminConversationList(page);
+      const data = await adminConversationList(page, filter);
       const items = extractConversationArray(data).map((item) => normalizeConversation(item));
       setRows(items);
 
@@ -174,7 +166,7 @@ export default function Conversations() {
     } finally {
       setIsLoading(false);
     }
-  }, [page]);
+  }, [filter, page]);
 
   useEffect(() => {
     fetchConversations();

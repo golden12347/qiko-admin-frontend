@@ -24,10 +24,8 @@ import {
   Building2,
   Calendar,
   Mail,
-  CreditCard,
   Bot,
   MessageSquare,
-  Clock,
   ChevronRight,
   ExternalLink,
 } from "lucide-react";
@@ -37,6 +35,7 @@ import {
   platformConversations,
 } from "@/lib/data";
 import { adminCustomerDetails, type CustomerDetailsApiResponse } from "@/services/adminCustomerDetailsApi";
+import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 
 /* ── animation ─────────────────────────────────────────────── */
@@ -63,6 +62,7 @@ const planColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
   Premium: "bg-qiko-cyan/10 text-qiko-cyan",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
+  "No plan": "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
 };
 
 const workerStatusColors: Record<string, string> = {
@@ -71,10 +71,15 @@ const workerStatusColors: Record<string, string> = {
 };
 
 const normalizeWorkerStatus = (status: string) => (status === "live" ? "live" : "training");
-const normalizeCustomerStatus = (status: string) => (status === "Active" ? "Active" : "Non-active");
+const normalizeCustomerStatus = (status: string) => {
+  const normalized = status.trim().toLowerCase();
+  return normalized === "active" ? "Active" : "Non-active";
+};
 const normalizeCustomerPlan = (plan: string) => {
-  if (plan === "Enterprise") return "Enterprise";
-  if (plan === "Business" || plan === "Growth" || plan === "Premium") return "Premium";
+  const normalized = plan.trim().toLowerCase();
+  if (!normalized || normalized === "null") return "No plan";
+  if (normalized === "enterprise") return "Enterprise";
+  if (normalized === "business" || normalized === "growth" || normalized === "premium") return "Premium";
   return "Basic";
 };
 
@@ -110,6 +115,7 @@ function normalizeWorkerStatusLabel(status: string): "live" | "training" {
 export default function CustomerDetail() {
   const params = useParams<{ slug: string }>();
   const [location, navigate] = useLocation();
+  const { filter } = useGlobalDateFilter();
 
   const customer = useMemo(
     () => customers.find((c) => c.slug === params.slug),
@@ -146,18 +152,29 @@ export default function CustomerDetail() {
     if (!customerIdForApi) return;
     (async () => {
       try {
-        const response = await adminCustomerDetails(customerIdForApi);
+        const response = await adminCustomerDetails(customerIdForApi, filter);
         setCustomerDetails(response?.data ?? null);
       } catch {
         setCustomerDetails(null);
         toast.error("Failed to fetch customer details.");
       }
     })();
-  }, [customer?.id, selectedUserId]);
+  }, [customer?.id, filter, selectedUserId]);
 
-  const displayCustomerName = customerDetails?.user?.user_name || "—";
-  const displayContact = customerDetails?.user?.email || "—";
-  const displayJoined = customerDetails?.user?.created_at || "";
+  const userDetails = useMemo(() => {
+    const userValue = customerDetails?.user as unknown;
+    if (Array.isArray(userValue)) {
+      return (userValue[0] ?? null) as Record<string, unknown> | null;
+    }
+    if (userValue && typeof userValue === "object") {
+      return userValue as Record<string, unknown>;
+    }
+    return null;
+  }, [customerDetails?.user]);
+
+  const displayCustomerName = String(userDetails?.user_name ?? "—");
+  const displayContact = String(userDetails?.email ?? "—");
+  const displayJoined = String(userDetails?.created_at ?? "");
 
   const detailWorkers = useMemo(
     () =>
@@ -188,8 +205,8 @@ export default function CustomerDetail() {
     [customerDetails?.recent_conversations]
   );
 
-  const displayStatus = normalizeCustomerStatus(customer?.status || "Non-active");
-  const displayPlan = normalizeCustomerPlan(customer?.plan || "Basic");
+  const displayStatus = normalizeCustomerStatus(String(userDetails?.stripe_status ?? ""));
+  const displayPlan = normalizeCustomerPlan(String(userDetails?.subscription_plan_name ?? ""));
 
   if (!customer && !selectedUserId && !customerDetails) {
     return (
@@ -243,19 +260,16 @@ export default function CustomerDetail() {
                     <Badge variant="outline" className={`text-xs ${statusColors[displayStatus]}`}>
                       {displayStatus}
                     </Badge>
-                    <Badge variant="secondary" className={`text-xs border-0 ${planColors[displayPlan]}`}>
+                    <Badge
+                      variant={displayPlan === "No plan" ? "outline" : "secondary"}
+                      className={`text-xs ${displayPlan === "No plan" ? "" : "border-0"} ${planColors[displayPlan]}`}
+                    >
                       {displayPlan}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {customer ? `${customer.industry} · ${customer.country}` : "—"}
-                  </p>
-
                   <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-2 mt-4">
                     <InfoItem icon={<Mail className="size-3.5" />} label="Contact" value={displayContact} />
                     <InfoItem icon={<Calendar className="size-3.5" />} label="Joined" value={formatDate(displayJoined)} />
-                    <InfoItem icon={<Clock className="size-3.5" />} label="Last Active" value={customer?.lastActive ?? "—"} />
-                    <InfoItem icon={<CreditCard className="size-3.5" />} label="MRR" value={customer && customer.mrr > 0 ? `$${customer.mrr.toLocaleString()}/mo` : "—"} />
                   </div>
                 </div>
               </div>
@@ -301,7 +315,6 @@ export default function CustomerDetail() {
                     <TableHead className="text-xs font-medium text-muted-foreground">Type</TableHead>
                     <TableHead className="text-xs font-medium text-muted-foreground">Status</TableHead>
                     <TableHead className="text-xs font-medium text-muted-foreground text-right">Conversations</TableHead>
-                    <TableHead className="text-xs font-medium text-muted-foreground">Last Active</TableHead>
                     <TableHead className="text-xs font-medium text-muted-foreground w-8" />
                   </TableRow>
                 </TableHeader>
@@ -309,15 +322,14 @@ export default function CustomerDetail() {
                   {detailWorkers.map((w) => (
                     <TableRow
                       key={w.id}
-                      className="border-border/30 cursor-pointer hover:bg-secondary/30 transition-colors group"
-                      onClick={() => navigate(`/workers/${w.id}`)}
+                      className="border-border/30"
                     >
                       <TableCell>
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-qiko-indigo/10 text-qiko-indigo text-[10px] font-bold">
                             {w.name.charAt(0)}
                           </div>
-                          <span className="text-sm font-medium group-hover:text-qiko-indigo transition-colors">{w.name}</span>
+                          <span className="text-sm font-medium">{w.name}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -334,9 +346,8 @@ export default function CustomerDetail() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-sm">{fmt(w.conversationsTotal)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{w.lastActive}</TableCell>
                       <TableCell className="w-8">
-                        <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-qiko-indigo transition-colors" />
+                        <ChevronRight className="size-4 text-muted-foreground/30" />
                       </TableCell>
                     </TableRow>
                   ))}

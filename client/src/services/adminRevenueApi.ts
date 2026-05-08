@@ -1,4 +1,5 @@
 import APIClient from "./apiClient";
+import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 
 const revenueClient = new APIClient("/api/v1/admin/revenue", {
   baseURL: "http://127.0.0.1:8000",
@@ -37,8 +38,10 @@ interface RevenueApiEnvelope {
   data?: RevenueApiResponse;
 }
 
-export async function adminRevenue(): Promise<RevenueApiResponse> {
-  const { data } = await revenueClient.get<RevenueApiResponse | RevenueApiEnvelope>();
+export async function adminRevenue(filter?: ApiDateFilterStateLike): Promise<RevenueApiResponse> {
+  const { data } = await revenueClient.get<RevenueApiResponse | RevenueApiEnvelope>(
+    buildDateFilterParams(filter)
+  );
   const envelope = data as RevenueApiEnvelope;
   return envelope?.data && typeof envelope.data === "object"
     ? envelope.data

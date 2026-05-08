@@ -1,4 +1,5 @@
 import APIClient from "./apiClient";
+import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 
 const CUSTOMER_DETAILS_BASE_URL = "http://127.0.0.1:8000";
 
@@ -28,10 +29,15 @@ export interface CustomerDetailsApiResponse {
   };
 }
 
-export async function adminCustomerDetails(userId: string | number): Promise<CustomerDetailsApiResponse> {
+export async function adminCustomerDetails(
+  userId: string | number,
+  filter?: ApiDateFilterStateLike
+): Promise<CustomerDetailsApiResponse> {
   const customerDetailsClient = new APIClient(`/api/v1/admin/customer-details/${userId}`, {
     baseURL: CUSTOMER_DETAILS_BASE_URL,
   });
-  const { data } = await customerDetailsClient.get<CustomerDetailsApiResponse>();
+  const { data } = await customerDetailsClient.get<CustomerDetailsApiResponse>(
+    buildDateFilterParams(filter)
+  );
   return data;
 }

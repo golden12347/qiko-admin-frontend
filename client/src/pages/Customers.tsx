@@ -30,8 +30,8 @@ import {
   Bot,
   MessageSquare,
 } from "lucide-react";
-import { customers } from "@/lib/data";
 import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
+import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 
 const fadeUp = {
@@ -110,7 +110,8 @@ function slugify(value: string): string {
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
-    const parsed = Number(value);
+    const normalized = value.replace(/[^0-9.-]/g, "");
+    const parsed = Number(normalized);
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
@@ -152,7 +153,7 @@ function getStatusBadgeClass(status: string): string {
   return "bg-muted/20 text-muted-foreground border-border/40";
 }
 
-function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>): CustomerRow {
+function normalizeCustomer(item: unknown): CustomerRow {
   const row = (item ?? {}) as Record<string, unknown>;
   const name = typeof row.name === "string"
     ? row.name
@@ -171,7 +172,14 @@ function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>
     status: getDisplayStatus(row.stripe_status ?? row.status ?? ""),
     workersCount: isNullPlan ? 0 : toNumber(row.agents_count ?? row.workers_count ?? row.workersCount),
     conversationsTotal: toNumber(row.total_conversations ?? row.conversations_total ?? row.conversationsCount ?? row.conversationsTotal),
-    totalEarnings: earningsBySlug[slug] ?? 0,
+    totalEarnings: toNumber(
+      row.total_earning ??
+      row.total_earnings ??
+      row.total_earning_amount ??
+      row.earning ??
+      row.earnings ??
+      row.revenue
+    ),
     joinedDate: String(row.joined_date ?? row.joinedDate ?? row.created_at ?? row.createdAt ?? ""),
     contactEmail: String(row.user_email ?? row.email ?? row.contact_email ?? row.contactEmail ?? ""),
     industry: String(row.industry ?? ""),
@@ -180,6 +188,7 @@ function normalizeCustomer(item: unknown, earningsBySlug: Record<string, number>
 
 export default function Customers() {
   const [, navigate] = useLocation();
+  const { filter } = useGlobalDateFilter();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("totalEarnings");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -190,22 +199,14 @@ export default function Customers() {
   const [activeStripeStatusCount, setActiveStripeStatusCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  const earningsBySlug = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const c of customers) {
-      map[c.slug] = c.totalEarnings;
-    }
-    return map;
-  }, []);
-
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminCustomerList(page);
+      const data = await adminCustomerList(page, filter);
       console.log("[Customers] customer-list API response:", data);
       const list = extractCustomerArray(data);
 
-      const normalized = list.map((item) => normalizeCustomer(item, earningsBySlug));
+      const normalized = list.map((item) => normalizeCustomer(item));
       setCustomersApi(normalized);
 
       const nested = data?.data as Record<string, unknown> | undefined;
@@ -240,7 +241,7 @@ export default function Customers() {
     } finally {
       setIsLoading(false);
     }
-  }, [earningsBySlug, page]);
+  }, [filter, page]);
 
   useEffect(() => {
     fetchCustomers();
@@ -451,7 +452,7 @@ export default function Customers() {
                       </TableCell>
 
                       <TableCell className="text-right tabular-nums text-sm font-medium">
-                        {c.totalEarnings > 0 ? `$${c.totalEarnings.toLocaleString()}` : <span className="text-muted-foreground/40">—</span>}
+                        {c.totalEarnings > 0 ? `$${c.totalEarnings.toLocaleString()}` : "$0"}
                       </TableCell>
 
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">

@@ -1,4 +1,5 @@
 import APIClient from "./apiClient";
+import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 
 const workerListClient = new APIClient("/api/v1/admin/worker-list", {
   baseURL: "http://127.0.0.1:8000",
@@ -24,8 +25,14 @@ export interface WorkerListApiResponse {
   };
 }
 
-export async function adminWorkerList(page: number): Promise<WorkerListApiResponse> {
-  const { data } = await workerListClient.get<WorkerListApiResponse>({ page });
+export async function adminWorkerList(
+  page: number,
+  filter?: ApiDateFilterStateLike
+): Promise<WorkerListApiResponse> {
+  const { data } = await workerListClient.get<WorkerListApiResponse>({
+    page,
+    ...buildDateFilterParams(filter),
+  });
   return data;
 }
 

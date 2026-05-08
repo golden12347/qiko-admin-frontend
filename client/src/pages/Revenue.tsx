@@ -19,10 +19,6 @@ import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import {
-  mrrTrend,
-  topAccountsByRevenue, customers, platformWorkers,
-} from "@/lib/data";
 import { isDateInGlobalRange, parseDateValue, useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { adminRevenue } from "@/services/adminRevenueApi";
 import { toast } from "sonner";
@@ -87,34 +83,22 @@ export default function Revenue() {
     return fallback;
   }
 
-  function getDisplayPlan(plan: string): "Basic" | "Premium" | "Enterprise" {
-    if (plan === "Enterprise") return "Enterprise";
-    if (plan === "Business") return "Premium";
-    return "Basic";
-  }
-
   const customerRevenueData = useMemo(() => customerRevenueTableApi, [customerRevenueTableApi]);
 
   const normalizedPlanDistribution = useMemo(() => {
     if (planDistributionApi.length > 0) return planDistributionApi;
-    const buckets: Record<"Basic" | "Premium" | "Enterprise", { customers: number; mrr: number }> = {
-      Basic: { customers: 0, mrr: 0 },
-      Premium: { customers: 0, mrr: 0 },
-      Enterprise: { customers: 0, mrr: 0 },
-    };
-
-    customers.forEach((customer) => {
-      const plan = getDisplayPlan(customer.plan);
-      buckets[plan].customers += 1;
-      buckets[plan].mrr += customer.mrr;
-    });
-
     return [
-      { plan: "Basic", customers: buckets.Basic.customers, mrr: buckets.Basic.mrr },
-      { plan: "Premium", customers: buckets.Premium.customers, mrr: buckets.Premium.mrr },
-      { plan: "Enterprise", customers: buckets.Enterprise.customers, mrr: buckets.Enterprise.mrr },
+      { plan: "Basic", customers: 0, mrr: 0 },
+      { plan: "Premium", customers: 0, mrr: 0 },
+      { plan: "Enterprise", customers: 0, mrr: 0 },
     ];
   }, [planDistributionApi]);
+
+  const kpis = [
+    { label: "Total Revenue", value: `$${revenueCounts.totalEarning.toLocaleString()}`, trend: 14.2, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-400/10", sub: "All time" },
+    { label: "Avg Revenue / Customer", value: `$${revenueCounts.averageRevenuePerUser.toLocaleString()}`, trend: 5.2, icon: Users, color: "text-violet-400", bg: "bg-violet-400/10", sub: "Active accounts" },
+    { label: "Avg Revenue / Worker", value: `$${revenueCounts.averageRevenuePerAgent.toLocaleString()}`, trend: 8.7, icon: Zap, color: "text-qiko-success", bg: "bg-qiko-success/10", sub: "Live workers" },
+  ];
 
   const sortedCustomers = useMemo(() => {
     const data = [...customerRevenueData];
@@ -160,23 +144,10 @@ export default function Revenue() {
     return current.dir === "asc" ? <ChevronUp className="size-3 text-qiko-indigo" /> : <ChevronDown className="size-3 text-qiko-indigo" />;
   }
 
-  // Computed totals
-  const totalRevenue = customers.reduce((s, c) => s + c.totalEarnings, 0);
-  const activeCustomers = customers.filter((c) => c.status === "Active").length;
-  const avgRevenuePerCustomer = activeCustomers > 0 ? Math.round(totalRevenue / activeCustomers) : 0;
-  const activeWorkers = platformWorkers.filter((w) => w.status === "Live").length;
-  const avgRevenuePerWorker = activeWorkers > 0 ? Math.round(totalRevenue / activeWorkers) : 0;
-
-  const kpis = [
-    { label: "Total Revenue", value: `$${(revenueCounts.totalEarning || totalRevenue).toLocaleString()}`, trend: 14.2, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-400/10", sub: "All time" },
-    { label: "Avg Revenue / Customer", value: `$${(revenueCounts.averageRevenuePerUser || avgRevenuePerCustomer).toLocaleString()}`, trend: 5.2, icon: Users, color: "text-violet-400", bg: "bg-violet-400/10", sub: "Active accounts" },
-    { label: "Avg Revenue / Worker", value: `$${(revenueCounts.averageRevenuePerAgent || avgRevenuePerWorker).toLocaleString()}`, trend: 8.7, icon: Zap, color: "text-qiko-success", bg: "bg-qiko-success/10", sub: "Live workers" },
-  ];
-
   useEffect(() => {
     (async () => {
       try {
-        const response = await adminRevenue();
+        const response = await adminRevenue(filter);
         setRevenueCounts({
           totalEarning: toNumber(response.total_earning),
           averageRevenuePerUser: toNumber(response.average_revenue_per_user),
@@ -272,25 +243,13 @@ export default function Revenue() {
           averageRevenuePerUser: 0,
           averageRevenuePerAgent: 0,
         });
-        setRevenueOverTimeApi(mrrTrend.map((point) => ({ month: point.month, earning: point.mrr })));
-        setCustomerRevenueTableApi(
-          customers.map((c) => ({
-            name: c.name,
-            plan: getDisplayPlan(c.plan),
-            totalRevenue: c.totalEarnings,
-            lastBilling: c.status === "Active" ? "Mar 1, 2026" : c.status === "Trial" ? "Trial" : c.status === "Churned" ? "Cancelled" : "Suspended",
-          }))
-        );
-        setTopCustomersByRevenueApi(
-          topAccountsByRevenue.map((acct) => ({
-            name: acct.name,
-            amount: acct.mrr,
-          }))
-        );
+        setRevenueOverTimeApi([]);
+        setCustomerRevenueTableApi([]);
+        setTopCustomersByRevenueApi([]);
         setPlanDistributionApi([]);
       }
     })();
-  }, []);
+  }, [filter]);
 
   return (
     <div className="p-6 space-y-6">
@@ -342,21 +301,27 @@ export default function Revenue() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredRevenueOverTime} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
-                    <Area type="monotone" dataKey="earning" name="Earning" stroke="#10B981" strokeWidth={2} fill="url(#mrrGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {filteredRevenueOverTime.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={filteredRevenueOverTime} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
+                      <Area type="monotone" dataKey="earning" name="Earning" stroke="#10B981" strokeWidth={2} fill="url(#mrrGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No data available for selected filter.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

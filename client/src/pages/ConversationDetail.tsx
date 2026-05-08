@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { platformConversations, customers, platformWorkers } from "@/lib/data";
 import { adminConversationDetails } from "@/services/adminConversationDetailsApi";
+import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -22,7 +22,6 @@ import {
   Phone,
   Tag,
   User,
-  ArrowUpRight,
   Shield,
 } from "lucide-react";
 import { useParams, useLocation } from "wouter";
@@ -35,75 +34,6 @@ type TranscriptMessage = {
   confidence?: number;
   sources?: string[];
 };
-
-const transcripts: Record<string, TranscriptMessage[]> = {
-  "conv-001": [
-    { role: "user", text: "Hi, I'm looking for an enterprise solution for our sales team. We have about 200 reps.", time: "9:42 AM" },
-    { role: "worker", text: "Welcome! I'd be happy to help you find the right plan for your team. With 200 sales reps, our Enterprise plan would be the best fit. It includes unlimited workers, priority support, and custom integrations. Can I walk you through the key features?", time: "9:42 AM", confidence: 0.96, sources: ["Enterprise Plan Guide", "Pricing Matrix"] },
-    { role: "user", text: "Yes please. What kind of integrations do you support?", time: "9:43 AM" },
-    { role: "worker", text: "We integrate with all major CRMs including Salesforce, HubSpot, and Pipedrive. We also support Calendly for booking, Stripe for payments, and VAPI for voice channels. For enterprise clients, we offer custom API integrations as well.", time: "9:43 AM", confidence: 0.98, sources: ["Integration Docs", "Enterprise Features"] },
-    { role: "user", text: "That sounds great. We use Salesforce and Calendly. What's the pricing?", time: "9:44 AM" },
-    { role: "worker", text: "For 200 reps on the Enterprise plan, we can offer a custom package. The base Enterprise plan starts at $1,999/month with volume discounts available. I'd recommend scheduling a demo with our enterprise team to discuss your specific needs and get a tailored quote. Would you like me to book that for you?", time: "9:44 AM", confidence: 0.94, sources: ["Pricing Matrix", "Enterprise Playbook"] },
-    { role: "user", text: "Yes, let's schedule a demo. I'm free next Tuesday afternoon.", time: "9:45 AM" },
-    { role: "worker", text: "I've scheduled a demo for Tuesday, March 28th at 2:00 PM EST. You'll receive a calendar invite at sarah@company.com shortly. In the meantime, I can send you our enterprise case studies. Is there anything else I can help with?", time: "9:45 AM", confidence: 0.97, sources: ["Calendly Integration"] },
-    { role: "system", text: "Lead captured: sarah@company.com | Booking confirmed: Mar 28, 2:00 PM EST", time: "9:45 AM" },
-    { role: "user", text: "That's perfect. Can you also send me the ROI calculator?", time: "9:46 AM" },
-    { role: "worker", text: "Absolutely! I've sent the ROI calculator link to your email. Based on similar companies with 200 reps, our clients typically see a 3.2x return within the first 6 months. The demo will cover your specific use case in detail.", time: "9:46 AM", confidence: 0.92, sources: ["ROI Calculator", "Case Studies DB"] },
-    { role: "user", text: "Excellent, thank you so much!", time: "9:46 AM" },
-    { role: "worker", text: "You're welcome, Sarah! Looking forward to the demo on Tuesday. If you have any questions before then, feel free to reach out anytime. Have a great day!", time: "9:46 AM", confidence: 0.99 },
-    { role: "system", text: "Conversation completed | Satisfaction: 5/5 | Payment link sent: $2,400/yr", time: "9:46 AM" },
-  ],
-  "conv-002": [
-    { role: "user", text: "I've been charged twice for my subscription this month. I need this resolved immediately.", time: "9:38 AM" },
-    { role: "worker", text: "I'm sorry to hear about the double charge. Let me look into your account right away. Can you confirm the email address associated with your account?", time: "9:38 AM", confidence: 0.91, sources: ["Billing FAQ"] },
-    { role: "user", text: "It's james@acmecorp.com. This is unacceptable — I've been a customer for over a year.", time: "9:39 AM" },
-    { role: "worker", text: "I completely understand your frustration, James. I can see your account and I'm checking the billing records now. It appears there was a system processing error on March 23rd that caused a duplicate charge of $499.", time: "9:39 AM", confidence: 0.87, sources: ["Billing System"] },
-    { role: "user", text: "I want a full refund for the duplicate charge AND some kind of credit for the inconvenience.", time: "9:40 AM" },
-    { role: "worker", text: "I understand. Unfortunately, I'm not authorized to process refunds or apply account credits directly. Let me escalate this to our billing team who can resolve this for you right away. They'll be able to process the refund and discuss compensation.", time: "9:40 AM", confidence: 0.62, sources: ["Escalation Policy"] },
-    { role: "system", text: "Conversation escalated to human agent — Reason: billing dispute, refund authorization required", time: "9:41 AM" },
-    { role: "user", text: "Fine, but I expect this to be resolved today.", time: "9:41 AM" },
-    { role: "worker", text: "Absolutely. I've flagged this as urgent and our billing team lead has been notified. You should hear back within 2 hours. I've also documented the full issue so you won't need to repeat anything. Is there anything else I can help with in the meantime?", time: "9:42 AM", confidence: 0.88, sources: ["Escalation Policy", "SLA Guidelines"] },
-  ],
-  "conv-004": [
-    { role: "user", text: "I need to understand your insurance industry solutions. We're evaluating AI platforms.", time: "9:35 AM" },
-    { role: "worker", text: "Great to hear you're exploring AI solutions for insurance! We specialize in helping insurance companies automate customer interactions, from policy inquiries to claims processing. What specific areas are you looking to improve?", time: "9:35 AM", confidence: 0.95, sources: ["Insurance Vertical Guide"] },
-    { role: "user", text: "Primarily claims intake and policy renewals. We handle about 50,000 policies.", time: "9:36 AM" },
-    { role: "worker", text: "With that volume, our Enterprise plan with voice integration would be ideal. Our insurance clients typically automate 70% of claims intake and see a 40% improvement in renewal rates. Would you like to see a live demo tailored to insurance workflows?", time: "9:36 AM", confidence: 0.97, sources: ["Insurance Case Study", "Enterprise Features"] },
-    { role: "user", text: "Yes, and I'd also like to understand your compliance capabilities.", time: "9:37 AM" },
-    { role: "worker", text: "Absolutely. We're SOC 2 Type II certified and HIPAA compliant. For insurance, we also support state-specific regulatory requirements. Our workers can be configured with compliance guardrails to ensure every interaction meets your regulatory standards. Let me book a specialized demo for you.", time: "9:37 AM", confidence: 0.93, sources: ["Compliance Docs", "Insurance Regulatory Guide"] },
-    { role: "system", text: "Lead captured: michael@insuretech.com | Demo booked: Mar 28, 2:00 PM", time: "9:38 AM" },
-    { role: "user", text: "Perfect. Can you also include pricing for voice channels?", time: "9:38 AM" },
-    { role: "worker", text: "Of course! Voice channels are included in our Enterprise plan at no extra cost. For 50,000 policies, I'd estimate your monthly investment at around $4,800 with a projected ROI of 5.2x in the first year. I'll include detailed pricing in the demo materials.", time: "9:39 AM", confidence: 0.94, sources: ["Pricing Matrix", "Voice Channel Docs"] },
-    { role: "system", text: "Payment link sent: $4,800/mo Enterprise + Voice | Subscription confirmed", time: "9:40 AM" },
-  ],
-};
-
-// Generate a default transcript for conversations without specific data
-function getDefaultTranscript(convId: string) {
-  const c = platformConversations.find(x => x.id === convId);
-  if (!c) return [];
-  const msgs: TranscriptMessage[] = [
-    { role: "user", text: `Hi, I have a question about your services.`, time: c.timestamp.split(" ").slice(1).join(" ").replace(" AM", " AM").replace(" PM", " PM") || "9:00 AM" },
-    { role: "worker", text: `Hello ${c.userName !== "Anonymous" ? c.userName : "there"}! I'd be happy to help. What would you like to know?`, time: c.timestamp.split(" ").slice(1).join(" ") || "9:00 AM", confidence: 0.94, sources: ["General FAQ"] },
-  ];
-  if (c.messagesCount > 4) {
-    msgs.push({ role: "user", text: "Can you tell me more about pricing and features?", time: "9:02 AM" });
-    msgs.push({ role: "worker", text: "Of course! Let me walk you through our plans and how they can help your business.", time: "9:02 AM", confidence: 0.91, sources: ["Pricing Guide"] });
-  }
-  if (c.leadCaptured) {
-    msgs.push({ role: "system", text: `Lead captured: ${c.userName}`, time: "9:05 AM" });
-  }
-  if (c.bookingMade) {
-    msgs.push({ role: "system", text: "Booking confirmed via Calendly", time: "9:06 AM" });
-  }
-  if (c.status === "Escalated") {
-    msgs.push({ role: "system", text: "Conversation escalated to human agent", time: "9:07 AM" });
-  }
-  if (c.status === "Dropped") {
-    msgs.push({ role: "system", text: "User left the conversation", time: "9:03 AM" });
-  }
-  return msgs;
-}
 
 function formatTranscriptDateTime(value: string): string {
   const normalized = value.includes(" ") ? value.replace(" ", "T") : value;
@@ -128,13 +58,13 @@ function capitalizeFirstWordFirstLetter(value: string): string {
 export default function ConversationDetail() {
   const { id } = useParams<{ id: string }>();
   const [location, navigate] = useLocation();
+  const { filter } = useGlobalDateFilter();
   const [apiTranscript, setApiTranscript] = useState<TranscriptMessage[] | null>(null);
   const [apiWorkerName, setApiWorkerName] = useState<string | null>(null);
   const [apiUserName, setApiUserName] = useState<string | null>(null);
   const [apiWorkerIndustry, setApiWorkerIndustry] = useState<string | null>(null);
   const [apiStartedAt, setApiStartedAt] = useState<string | null>(null);
-  const c = platformConversations.find(x => x.id === id);
-  const cForUi = c ?? platformConversations[0];
+  const [apiChannel, setApiChannel] = useState<string | null>(null);
   const selectedConversationId = useMemo(() => {
     const queryString = typeof window !== "undefined" ? window.location.search : "";
     const conversationId = new URLSearchParams(queryString).get("conversationId");
@@ -146,7 +76,7 @@ export default function ConversationDetail() {
     if (!conversationIdForApi) return;
     (async () => {
       try {
-        const response = await adminConversationDetails(conversationIdForApi);
+        const response = await adminConversationDetails(conversationIdForApi, filter);
         const dataObj = (response?.data ?? {}) as Record<string, unknown>;
         const userData = dataObj.user;
         let userNameFromApi: string | null = null;
@@ -174,6 +104,7 @@ export default function ConversationDetail() {
         setApiWorkerName(workerNameFromMembers);
         setApiWorkerIndustry(workerIndustryFromMembers);
         setApiStartedAt(startedAtFromMembers);
+        setApiChannel(String(dataObj.channel ?? dataObj.conversation_channel ?? "").trim() || null);
 
         const rawMessages = Array.isArray(response?.data?.messages) ? response.data.messages : [];
         const normalized = rawMessages.map((item) => {
@@ -205,11 +136,12 @@ export default function ConversationDetail() {
         setApiUserName(null);
         setApiWorkerIndustry(null);
         setApiStartedAt(null);
+        setApiChannel(null);
       }
     })();
-  }, [id, selectedConversationId]);
+  }, [filter, id, selectedConversationId]);
 
-  if (!cForUi) {
+  if (!selectedConversationId && !id) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center space-y-3">
@@ -223,12 +155,12 @@ export default function ConversationDetail() {
     );
   }
 
-  const customer = customers.find(x => x.id === cForUi.customerId);
-  const worker = platformWorkers.find(x => x.id === cForUi.workerId);
-  const transcript = apiTranscript && apiTranscript.length > 0 ? apiTranscript : transcripts[cForUi.id] || getDefaultTranscript(cForUi.id);
-  const messageCount = apiTranscript !== null ? apiTranscript.length : cForUi.messagesCount;
+  const transcript = apiTranscript ?? [];
+  const messageCount = transcript.length;
+  const displayChannel = apiChannel ?? "Web";
+  const isVoiceChannel = displayChannel.toLowerCase() === "voice";
 
-  const displayUserName = capitalizeFirstWordFirstLetter(apiUserName ?? cForUi.userName);
+  const displayUserName = capitalizeFirstWordFirstLetter(apiUserName ?? "—");
 
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-[1300px] mx-auto">
@@ -246,9 +178,9 @@ export default function ConversationDetail() {
               <h1 className="text-2xl font-heading font-bold tracking-tight">{displayUserName}</h1>
             </div>
             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1"><Calendar className="size-3" />{cForUi.timestamp}</span>
+              <span className="flex items-center gap-1"><Calendar className="size-3" />{formatTranscriptDateTime(apiStartedAt ?? "—")}</span>
               <span className="flex items-center gap-1"><MessageSquare className="size-3" />{messageCount} messages</span>
-              <span className="flex items-center gap-1">{cForUi.channel === "Voice" ? <Phone className="size-3" /> : <Globe className="size-3" />}{cForUi.channel}</span>
+              <span className="flex items-center gap-1">{isVoiceChannel ? <Phone className="size-3" /> : <Globe className="size-3" />}{displayChannel}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -272,6 +204,11 @@ export default function ConversationDetail() {
             </CardHeader>
             <ScrollArea className="h-[560px] md:h-[620px]">
               <div className="p-5 space-y-4">
+                {transcript.length === 0 && (
+                  <div className="h-full min-h-[320px] flex items-center justify-center text-sm text-muted-foreground">
+                    No conversation transcript found.
+                  </div>
+                )}
                 {transcript.map((msg, i) => (
                   <motion.div
                     key={i}
@@ -347,29 +284,23 @@ export default function ConversationDetail() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Building2 className="size-3.5" />Customer</span>
-                      <button onClick={() => navigate(`/customers/${customer?.slug || ""}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
-                        {apiUserName ?? cForUi.customerName} <ArrowUpRight className="size-2.5" />
-                      </button>
+                      <span className="text-xs text-qiko-indigo">{apiUserName ?? "—"}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Bot className="size-3.5" />Worker</span>
-                      <button onClick={() => navigate(`/workers/${cForUi.workerId}`)} className="text-xs text-qiko-indigo hover:underline flex items-center gap-1">
-                        {apiWorkerName ?? cForUi.workerName} <ArrowUpRight className="size-2.5" />
-                      </button>
+                      <span className="text-xs text-qiko-indigo">{apiWorkerName ?? "—"}</span>
                     </div>
-                    {worker && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="size-3.5" />Worker Type</span>
-                        <span className="text-xs">{apiWorkerIndustry ?? worker.type}</span>
-                      </div>
-                    )}
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1.5">{cForUi.channel === "Voice" ? <Phone className="size-3.5" /> : <Globe className="size-3.5" />}Channel</span>
-                      <span className="text-xs">{cForUi.channel}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="size-3.5" />Worker Type</span>
+                      <span className="text-xs">{apiWorkerIndustry ?? "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5">{isVoiceChannel ? <Phone className="size-3.5" /> : <Globe className="size-3.5" />}Channel</span>
+                      <span className="text-xs">{displayChannel}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Calendar className="size-3.5" />Started</span>
-                      <span className="text-xs tabular-nums">{formatTranscriptDateTime(apiStartedAt ?? cForUi.timestamp)}</span>
+                      <span className="text-xs tabular-nums">{formatTranscriptDateTime(apiStartedAt ?? "—")}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><MessageSquare className="size-3.5" />Messages</span>

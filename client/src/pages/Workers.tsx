@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { adminWorkerList, type WorkerListApiResponse } from "@/services/adminWorkersApi";
+import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -160,6 +161,7 @@ function formatCreatedAt(value: string): string {
 }
 
 export default function Workers() {
+  const { filter } = useGlobalDateFilter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [workersApi, setWorkersApi] = useState<WorkerRow[]>([]);
@@ -172,7 +174,7 @@ export default function Workers() {
   const fetchWorkers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminWorkerList(page);
+      const data = await adminWorkerList(page, filter);
       const rows = extractWorkerArray(data).map((item) => normalizeWorker(item));
       setWorkersApi(rows);
 
@@ -216,7 +218,7 @@ export default function Workers() {
     } finally {
       setIsLoading(false);
     }
-  }, [page]);
+  }, [filter, page]);
 
   useEffect(() => {
     fetchWorkers();

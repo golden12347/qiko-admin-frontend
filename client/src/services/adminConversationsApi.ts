@@ -1,4 +1,5 @@
 import APIClient from "./apiClient";
+import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 
 const conversationListClient = new APIClient("/api/v1/admin/conversation-list", {
   baseURL: "http://127.0.0.1:8000",
@@ -20,8 +21,14 @@ export interface ConversationListApiResponse {
   };
 }
 
-export async function adminConversationList(page: number): Promise<ConversationListApiResponse> {
-  const { data } = await conversationListClient.get<ConversationListApiResponse>({ page });
+export async function adminConversationList(
+  page: number,
+  filter?: ApiDateFilterStateLike
+): Promise<ConversationListApiResponse> {
+  const { data } = await conversationListClient.get<ConversationListApiResponse>({
+    page,
+    ...buildDateFilterParams(filter),
+  });
   return data;
 }
 

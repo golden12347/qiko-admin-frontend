@@ -1,4 +1,5 @@
 import APIClient from "./apiClient";
+import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 
 const overviewClient = new APIClient("/api/v1/admin/overview", {
   baseURL: "http://127.0.0.1:8000",
@@ -35,8 +36,10 @@ interface OverviewApiEnvelope {
   data?: OverviewApiResponse;
 }
 
-export async function adminOverview(): Promise<OverviewApiResponse> {
-  const { data } = await overviewClient.get<OverviewApiResponse | OverviewApiEnvelope>();
+export async function adminOverview(filter?: ApiDateFilterStateLike): Promise<OverviewApiResponse> {
+  const { data } = await overviewClient.get<OverviewApiResponse | OverviewApiEnvelope>(
+    buildDateFilterParams(filter)
+  );
   const envelope = data as OverviewApiEnvelope;
   return envelope?.data && typeof envelope.data === "object"
     ? envelope.data
