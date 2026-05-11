@@ -2,9 +2,9 @@ import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 import { store } from "@/store";
 import { clearAuth } from "@/store/slices/authSlice";
+import { API_V1_BASE_URL } from "./apiConfig";
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000/api/v1";
+export const API_BASE_URL = API_V1_BASE_URL;
 
 /**
  * Axios instance for API v1. Attaches Bearer token from Redux when present.

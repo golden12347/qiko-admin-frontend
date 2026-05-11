@@ -1,7 +1,6 @@
 import APIClient from "./apiClient";
 import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
-
-const CONVERSATION_DETAILS_BASE_URL = "http://127.0.0.1:8000";
+import { BACKEND_BASE_URL } from "./apiConfig";
 
 export interface ConversationDetailsApiResponse {
   message?: string;
@@ -17,7 +16,7 @@ export async function adminConversationDetails(
   const conversationDetailsClient = new APIClient(
     `/api/v1/admin/conversation-details/${conversationId}`,
     {
-      baseURL: CONVERSATION_DETAILS_BASE_URL,
+      baseURL: BACKEND_BASE_URL,
     }
   );
   const { data } = await conversationDetailsClient.get<ConversationDetailsApiResponse>(

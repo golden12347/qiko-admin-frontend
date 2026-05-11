@@ -1,7 +1,8 @@
 import APIClient from "./apiClient";
+import { BACKEND_BASE_URL } from "./apiConfig";
 
 const sendInviteClient = new APIClient("/api/v1/admin/send-invite", {
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: BACKEND_BASE_URL,
 });
 
 export interface SendInvitePayload {

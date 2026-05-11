@@ -1,8 +1,9 @@
 import APIClient from "./apiClient";
 import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
+import { BACKEND_BASE_URL } from "./apiConfig";
 
 const adminUsersListClient = new APIClient("/api/v1/admin/admin-user-name", {
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: BACKEND_BASE_URL,
 });
 
 export interface AdminUserNameItem {
