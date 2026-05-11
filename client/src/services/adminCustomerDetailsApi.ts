@@ -2,30 +2,37 @@ import APIClient from "./apiClient";
 import { buildDateFilterParams, type ApiDateFilterStateLike } from "./dateFilterParams";
 import { BACKEND_BASE_URL } from "./apiConfig";
 
+export interface CustomerDetailsUser {
+  id?: number | string;
+  user_name?: string;
+  email?: string;
+  created_at?: string;
+  stripe_status?: string;
+  subscription_plan_name?: string | null;
+  is_studio?: boolean | number | string;
+}
+
+export interface CustomerDetailsData {
+  user?: CustomerDetailsUser | CustomerDetailsUser[];
+  total_agents_count?: number;
+  agents?: Array<{
+    id?: number | string;
+    name?: string;
+    industry?: string;
+    status?: string;
+    conversations_count?: number;
+  }>;
+  recent_conversations?: Array<{
+    conversation_id?: number | string;
+    agent_name?: string;
+    user_name?: string;
+    conversation_time?: string;
+  }>;
+}
+
 export interface CustomerDetailsApiResponse {
   message?: string;
-  data?: {
-    user?: {
-      id?: number | string;
-      user_name?: string;
-      email?: string;
-      created_at?: string;
-    };
-    total_agents_count?: number;
-    agents?: Array<{
-      id?: number | string;
-      name?: string;
-      industry?: string;
-      status?: string;
-      conversations_count?: number;
-    }>;
-    recent_conversations?: Array<{
-      conversation_id?: number | string;
-      agent_name?: string;
-      user_name?: string;
-      conversation_time?: string;
-    }>;
-  };
+  data?: CustomerDetailsData;
 }
 
 export async function adminCustomerDetails(
