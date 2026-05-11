@@ -5,12 +5,14 @@
 // Design: Dark Lattice — analytical, Stripe-inspired
 // ============================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -34,7 +36,8 @@ import {
   platformWorkers,
   platformConversations,
 } from "@/lib/data";
-import { adminCustomerDetails, type CustomerDetailsApiResponse } from "@/services/adminCustomerDetailsApi";
+import { adminCustomerDetails, type CustomerDetailsData } from "@/services/adminCustomerDetailsApi";
+import { adminCustomerIsStudio } from "@/services/adminCustomerIsStudioApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 
@@ -96,6 +99,33 @@ function formatWorkerTypeLabel(value: string): string {
   return value.replace(/_/g, " ");
 }
 
+function parseIsStudio(value: unknown): boolean {
+  if (value === true || value === 1 || value === "1") return true;
+  if (value === false || value === 0 || value === "0") return false;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "yes" || v === "on") return true;
+    if (v === "false" || v === "no" || v === "off" || v === "") return false;
+  }
+  return Boolean(value);
+}
+
+function mergeUserIsStudio(prev: CustomerDetailsData | null, checked: boolean): CustomerDetailsData | null {
+  if (!prev) return prev;
+  const u = prev.user;
+  if (Array.isArray(u)) {
+    if (u.length === 0) return { ...prev, user: [{ is_studio: checked }] };
+    const next = u.map((item, i) =>
+      i === 0 ? { ...item, is_studio: checked } : item
+    );
+    return { ...prev, user: next };
+  }
+  if (u && typeof u === "object") {
+    return { ...prev, user: { ...u, is_studio: checked } };
+  }
+  return { ...prev, user: { is_studio: checked } };
+}
+
 /* ── helpers ───────────────────────────────────────────────── */
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -134,7 +164,8 @@ export default function CustomerDetail() {
         .join(" "),
     [params.slug]
   );
-  const [customerDetails, setCustomerDetails] = useState<CustomerDetailsApiResponse["data"] | null>(null);
+  const [customerDetails, setCustomerDetails] = useState<CustomerDetailsData | null>(null);
+  const [studioSaving, setStudioSaving] = useState(false);
   const selectedUserId = useMemo(() => {
     const queryString = typeof window !== "undefined" ? window.location.search : "";
     const userId = new URLSearchParams(queryString).get("userId");
@@ -211,6 +242,38 @@ export default function CustomerDetail() {
 
   const displayStatus = normalizeCustomerStatus(String(userDetails?.stripe_status ?? ""));
   const displayPlan = normalizeCustomerPlan(String(userDetails?.subscription_plan_name ?? ""));
+  const isStudio = parseIsStudio(userDetails?.is_studio);
+
+  const studioUserId = useMemo(() => {
+    if (selectedUserId) return selectedUserId;
+    if (customer?.id) return String(customer.id);
+    const id = userDetails?.id;
+    if (id != null && String(id).length > 0) return String(id);
+    return null;
+  }, [selectedUserId, customer?.id, userDetails?.id]);
+
+  const handleStudioChange = useCallback(
+    async (checked: boolean) => {
+      if (!studioUserId) {
+        toast.error("Customer id missing; cannot update studio.");
+        return;
+      }
+      const previous = parseIsStudio(userDetails?.is_studio);
+      setStudioSaving(true);
+      setCustomerDetails((prev) => mergeUserIsStudio(prev, checked));
+      try {
+        await adminCustomerIsStudio(studioUserId, { is_studio: checked });
+      } catch (err: unknown) {
+        setCustomerDetails((prev) => mergeUserIsStudio(prev, previous));
+        const ax = err as { response?: { data?: { message?: string } } };
+        const message = ax?.response?.data?.message;
+        toast.error(typeof message === "string" ? message : "Failed to update studio.");
+      } finally {
+        setStudioSaving(false);
+      }
+    },
+    [studioUserId, userDetails?.is_studio]
+  );
 
   if (!customer && !selectedUserId && !customerDetails) {
     return (
@@ -259,17 +322,35 @@ export default function CustomerDetail() {
                   {displayCustomerName.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-2xl font-bold font-heading tracking-tight">{displayCustomerName}</h1>
-                    <Badge variant="outline" className={`text-xs ${statusColors[displayStatus]}`}>
-                      {displayStatus}
-                    </Badge>
-                    <Badge
-                      variant={displayPlan === "No plan" ? "outline" : "secondary"}
-                      className={`text-xs ${displayPlan === "No plan" ? "" : "border-0"} ${planColors[displayPlan]}`}
-                    >
-                      {displayPlan}
-                    </Badge>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
+                      <h1 className="text-2xl font-bold font-heading tracking-tight">{displayCustomerName}</h1>
+                      <Badge variant="outline" className={`text-xs ${statusColors[displayStatus]}`}>
+                        {displayStatus}
+                      </Badge>
+                      <Badge
+                        variant={displayPlan === "No plan" ? "outline" : "secondary"}
+                        className={`text-xs ${displayPlan === "No plan" ? "" : "border-0"} ${planColors[displayPlan]}`}
+                      >
+                        {displayPlan}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Label
+                        htmlFor="customer-studio-toggle"
+                        className="text-sm text-muted-foreground cursor-pointer whitespace-nowrap"
+                      >
+                        studio
+                      </Label>
+                      <Switch
+                        id="customer-studio-toggle"
+                        checked={isStudio}
+                        onCheckedChange={handleStudioChange}
+                        disabled={studioSaving}
+                        aria-label="studio"
+                        className="shrink-0"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-2 mt-4">
                     <InfoItem icon={<Mail className="size-3.5" />} label="Contact" value={displayContact} />
