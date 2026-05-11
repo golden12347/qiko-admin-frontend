@@ -19,6 +19,7 @@ export interface OverviewApiResponse {
   customer_conversations_users?: Array<{
     user_name?: string;
     total_conversations?: number;
+    subscription_plan_name?: string | null;
   }>;
   revenue_over_time?: Array<{
     month?: string;

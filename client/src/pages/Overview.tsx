@@ -26,7 +26,6 @@ import {
   XCircle,
   Info,
   ChevronRight,
-  TrendingUp,
   TrendingDown,
 } from "lucide-react";
 import {
@@ -42,8 +41,6 @@ import {
 } from "recharts";
 import {
   customers,
-  topCustomersByConversations,
-  topCustomersByEarnings,
   customerGrowthTrend,
   recentCustomerActivity,
   recentWorkerActivity,
@@ -133,7 +130,7 @@ export default function Overview() {
   const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
   const [overviewRevenueOverTime, setOverviewRevenueOverTime] = useState<Array<{ month: string; earning: number }>>([]);
   const [overviewTopCustomersByUsage, setOverviewTopCustomersByUsage] = useState<
-    Array<{ name: string; conversations: number }>
+    Array<{ name: string; conversations: number; subscriptionPlanName: string }>
   >([]);
   const [overviewTopCustomersByEarnings, setOverviewTopCustomersByEarnings] = useState<
     Array<{ name: string; plan: string; workers: number; earnings: number }>
@@ -174,6 +171,7 @@ export default function Overview() {
             ? response.customer_conversations_users.map((item) => ({
                 name: String(item.user_name ?? "—"),
                 conversations: Number(item.total_conversations ?? 0),
+                subscriptionPlanName: String(item.subscription_plan_name ?? "No plan"),
               }))
             : []
         );
@@ -483,7 +481,7 @@ export default function Overview() {
                       </div>
                     </div>
                     <Badge variant="secondary" className="text-[10px] bg-qiko-success/10 text-qiko-success border-0 tabular-nums">
-                      {topCustomersByConversations[i]?.conversion ?? 0}%
+                      {c.subscriptionPlanName}
                     </Badge>
                   </div>
                 ))}
@@ -520,9 +518,6 @@ export default function Overview() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold tabular-nums">${c.earnings.toLocaleString()}</p>
-                      <p className="text-[10px] text-qiko-success flex items-center gap-0.5 justify-end">
-                        <TrendingUp className="size-2.5" />{topCustomersByEarnings[i]?.trend ?? 0}%
-                      </p>
                     </div>
                   </div>
                 ))}
