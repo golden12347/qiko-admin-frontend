@@ -55,6 +55,11 @@ function capitalizeFirstWordFirstLetter(value: string): string {
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
+function formatWorkerType(value: string | null): string {
+  if (!value || value.trim().length === 0) return "—";
+  return value.replace(/_/g, " ");
+}
+
 export default function ConversationDetail() {
   const { id } = useParams<{ id: string }>();
   const [location, navigate] = useLocation();
@@ -292,7 +297,7 @@ export default function ConversationDetail() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="size-3.5" />Worker Type</span>
-                      <span className="text-xs">{apiWorkerIndustry ?? "—"}</span>
+                      <span className="text-xs">{formatWorkerType(apiWorkerIndustry)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1.5">{isVoiceChannel ? <Phone className="size-3.5" /> : <Globe className="size-3.5" />}Channel</span>

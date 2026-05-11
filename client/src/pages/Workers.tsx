@@ -45,7 +45,6 @@ const typeStyles: Record<string, string> = {
   sales: "bg-qiko-indigo/10 text-qiko-indigo",
   support: "bg-qiko-cyan/10 text-qiko-cyan",
   research: "bg-qiko-warning/10 text-qiko-warning",
-  "financial analyst": "bg-emerald-400/10 text-emerald-400",
   onboarding: "bg-violet-400/10 text-violet-400",
   retention: "bg-rose-400/10 text-rose-400",
 };
@@ -134,7 +133,12 @@ function statusBadgeClass(status: string): string {
 }
 
 function typeBadgeClass(type: string): string {
-  return typeStyles[type.toLowerCase()] ?? "bg-muted/20 text-muted-foreground";
+  const normalized = type.toLowerCase().replace(/_/g, " ").trim();
+  return typeStyles[normalized] ?? "bg-muted/20 text-muted-foreground";
+}
+
+function formatTypeLabel(type: string): string {
+  return type.replace(/_/g, " ");
 }
 
 function formatStatusLabel(status: string): string {
@@ -365,7 +369,7 @@ export default function Workers() {
                   <TableCell className="text-sm text-muted-foreground">{w.customerName}</TableCell>
                   <TableCell>
                     <Badge variant="secondary" className={`text-[10px] border-0 ${typeBadgeClass(w.type)}`}>
-                      {w.type}
+                      {formatTypeLabel(w.type)}
                     </Badge>
                   </TableCell>
                   <TableCell>

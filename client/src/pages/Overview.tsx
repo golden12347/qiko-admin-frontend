@@ -41,7 +41,6 @@ import {
 } from "recharts";
 import {
   customers,
-  customerGrowthTrend,
   recentCustomerActivity,
   recentWorkerActivity,
   platformAlerts,
@@ -129,6 +128,9 @@ export default function Overview() {
   });
   const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
   const [overviewRevenueOverTime, setOverviewRevenueOverTime] = useState<Array<{ month: string; earning: number }>>([]);
+  const [overviewCustomerGrowthTrend, setOverviewCustomerGrowthTrend] = useState<
+    Array<{ month: string; newCustomers: number; churnedCustomers: number }>
+  >([]);
   const [overviewTopCustomersByUsage, setOverviewTopCustomersByUsage] = useState<
     Array<{ name: string; conversations: number; subscriptionPlanName: string }>
   >([]);
@@ -183,6 +185,15 @@ export default function Overview() {
               }))
             : []
         );
+        setOverviewCustomerGrowthTrend(
+          Array.isArray(response.customer_growth_trend)
+            ? response.customer_growth_trend.map((item) => ({
+                month: String(item.month ?? "—"),
+                newCustomers: toNumber(item.new_customers ?? item.newCustomers),
+                churnedCustomers: toNumber(item.churned_customers ?? item.churnedCustomers),
+              }))
+            : []
+        );
         setOverviewTopCustomersByEarnings(
           Array.isArray(response.top_customers_earnings)
             ? response.top_customers_earnings.map((item) => ({
@@ -202,6 +213,7 @@ export default function Overview() {
           totalSubscriptionsPercentage: 0,
           totalEarningPercentage: 0,
         });
+        setOverviewCustomerGrowthTrend([]);
       }
     })();
   }, [filter]);
@@ -218,7 +230,7 @@ export default function Overview() {
   const filteredRevenueHistory = overviewRevenueOverTime.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
-  const filteredCustomerGrowthTrend = customerGrowthTrend.filter((point) =>
+  const filteredCustomerGrowthTrend = overviewCustomerGrowthTrend.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
 

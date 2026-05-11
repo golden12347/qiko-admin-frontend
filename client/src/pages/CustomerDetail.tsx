@@ -92,6 +92,10 @@ const workerTypeColors: Record<string, string> = {
   Retention: "bg-rose-500/10 text-rose-400",
 };
 
+function formatWorkerTypeLabel(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
 /* ── helpers ───────────────────────────────────────────────── */
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -334,7 +338,7 @@ export default function CustomerDetail() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={`text-[10px] border-0 ${workerTypeColors[w.type] || ""}`}>
-                          {w.type}
+                          {formatWorkerTypeLabel(w.type)}
                         </Badge>
                       </TableCell>
                       <TableCell>

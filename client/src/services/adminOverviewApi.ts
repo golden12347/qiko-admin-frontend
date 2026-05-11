@@ -35,6 +35,13 @@ export interface OverviewApiResponse {
     month: string;
     conversations: number;
   }>;
+  customer_growth_trend?: Array<{
+    month?: string;
+    new_customers?: number | string;
+    churned_customers?: number | string;
+    newCustomers?: number | string;
+    churnedCustomers?: number | string;
+  }>;
 }
 
 interface OverviewApiEnvelope {

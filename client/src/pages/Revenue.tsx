@@ -54,6 +54,18 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+function formatBillingDate(value: string): string {
+  if (!value) return "—";
+  const normalized = value.includes(" ") ? value.replace(" ", "T") : value;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default function Revenue() {
   const { filter } = useGlobalDateFilter();
   const [custSort, setCustSort] = useState<{ key: CustomerSortKey; dir: SortDir }>({ key: "totalRevenue", dir: "desc" });
@@ -448,7 +460,7 @@ export default function Revenue() {
                       <TableCell className="text-right tabular-nums text-sm font-medium">
                         ${c.totalRevenue.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">{c.lastBilling}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">{formatBillingDate(c.lastBilling)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
