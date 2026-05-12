@@ -10,6 +10,7 @@ import { AdminInvite, useAuth } from "@/contexts/AuthContext";
 import { adminUsersList, type AdminUserNameItem } from "@/services/adminUsersListApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
+import { AdminInvitesListSkeleton, AdminUsersListSkeleton } from "@/components/tabPageSkeletons";
 
 const roleBadge: Record<string, string> = {
   owner: "bg-amber-400/15 text-amber-400 border-amber-400/30",
@@ -200,11 +201,7 @@ export default function AdminUsers() {
               <CardTitle className="text-base">Active Admin Users</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {apiLoading && (
-                <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
-                  Loading admin users...
-                </div>
-              )}
+              {apiLoading && <AdminUsersListSkeleton rows={5} />}
               {!apiLoading && displayUsers.map((user) => (
                 <div key={user.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 flex items-center justify-between gap-4">
                   <div className="min-w-0">
@@ -235,11 +232,7 @@ export default function AdminUsers() {
                 </div>
               )}
 
-              {apiLoading && (
-                <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
-                  Loading invitation history...
-                </div>
-              )}
+              {apiLoading && <AdminInvitesListSkeleton rows={5} />}
 
               {!apiLoading && displayInvites.map((invite) => (
                 <div key={invite.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 space-y-2">

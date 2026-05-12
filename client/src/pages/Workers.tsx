@@ -28,6 +28,11 @@ import {
 import { toast } from "sonner";
 import { adminWorkerList, type WorkerListApiResponse } from "@/services/adminWorkersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import {
+  WorkersSearchRowSkeleton,
+  WorkersStatsSkeleton,
+  WorkersTableSkeletonBody,
+} from "@/components/tabPageSkeletons";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -311,31 +316,39 @@ export default function Workers() {
         </Button>
       </div>
 
-      <motion.div
-        className="grid grid-cols-2 md:grid-cols-3 gap-4"
-        variants={fadeUp}
-        initial="hidden"
-        animate="visible"
-      >
-        <StatCard icon={<Bot className="size-4" />} label="Total Workers" value={stats.total} color="text-foreground" />
-        <StatCard icon={<Zap className="size-4" />} label="Live" value={stats.live} color="text-qiko-success" />
-        <StatCard icon={<Bot className="size-4" />} label="Training" value={stats.training} color="text-qiko-cyan" />
-      </motion.div>
+      {isLoading ? (
+        <WorkersStatsSkeleton />
+      ) : (
+        <motion.div
+          className="grid grid-cols-2 md:grid-cols-3 gap-4"
+          variants={fadeUp}
+          initial="hidden"
+          animate="visible"
+        >
+          <StatCard icon={<Bot className="size-4" />} label="Total Workers" value={stats.total} color="text-foreground" />
+          <StatCard icon={<Zap className="size-4" />} label="Live" value={stats.live} color="text-qiko-success" />
+          <StatCard icon={<Bot className="size-4" />} label="Training" value={stats.training} color="text-qiko-cyan" />
+        </motion.div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Search workers or customers..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-secondary/50 border-border/50"
-          />
+      {isLoading ? (
+        <WorkersSearchRowSkeleton />
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Search workers or customers..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-secondary/50 border-border/50"
+            />
+          </div>
+          <span className="text-xs text-muted-foreground ml-auto">
+            {filtered.length} on this page · {totalWorkers} total
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground ml-auto">
-          {filtered.length} on this page · {totalWorkers} total
-        </span>
-      </div>
+      )}
 
       <Card className="bg-card/80 border-border/40">
         <CardContent className="p-0">
@@ -353,6 +366,7 @@ export default function Workers() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {isLoading && <WorkersTableSkeletonBody />}
               {!isLoading && filtered.map((w) => (
                 <TableRow
                   key={w.id}
@@ -392,14 +406,6 @@ export default function Workers() {
                   {/* <TableCell className="text-xs text-muted-foreground">{w.lastActive}</TableCell> */}
                 </TableRow>
               ))}
-
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                    Loading workers...
-                  </TableCell>
-                </TableRow>
-              )}
 
               {!isLoading && filtered.length === 0 && (
                 <TableRow>

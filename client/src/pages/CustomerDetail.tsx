@@ -40,6 +40,8 @@ import { adminCustomerDetails, type CustomerDetailsData } from "@/services/admin
 import { adminCustomerIsStudio } from "@/services/adminCustomerIsStudioApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CustomerDetailPageSkeleton } from "@/components/tabPageSkeletons";
 
 /* ── animation ─────────────────────────────────────────────── */
 const fadeUp = {
@@ -172,6 +174,13 @@ export default function CustomerDetail() {
     return userId && userId.length > 0 ? userId : null;
   }, [location]);
 
+  const customerIdForApi = useMemo(() => {
+    const id = selectedUserId ?? customer?.id;
+    return id != null && String(id).length > 0 ? String(id) : null;
+  }, [selectedUserId, customer?.id]);
+
+  const [detailLoading, setDetailLoading] = useState(() => customerIdForApi != null);
+
   const workers = useMemo(
     () => (customer ? platformWorkers.filter((w) => w.customerId === customer.id) : []),
     [customer]
@@ -183,18 +192,29 @@ export default function CustomerDetail() {
   );
 
   useEffect(() => {
-    const customerIdForApi = selectedUserId ?? customer?.id;
-    if (!customerIdForApi) return;
+    if (customerIdForApi == null) {
+      setDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
     (async () => {
+      setDetailLoading(true);
       try {
         const response = await adminCustomerDetails(customerIdForApi, filter);
-        setCustomerDetails(response?.data ?? null);
+        if (!cancelled) setCustomerDetails(response?.data ?? null);
       } catch {
-        setCustomerDetails(null);
-        toast.error("Failed to fetch customer details.");
+        if (!cancelled) {
+          setCustomerDetails(null);
+          toast.error("Failed to fetch customer details.");
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
       }
     })();
-  }, [customer?.id, filter, selectedUserId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [customerIdForApi, filter]);
 
   const userDetails = useMemo(() => {
     const userValue = customerDetails?.user as unknown;
@@ -296,7 +316,13 @@ export default function CustomerDetail() {
             Customers
           </Link>
           <span>/</span>
-          <span className="text-foreground font-medium">{displayCustomerName}</span>
+          <span className="text-foreground font-medium">
+            {detailLoading ? (
+              <Skeleton className="h-4 w-40 inline-block align-middle rounded-md" />
+            ) : (
+              displayCustomerName
+            )}
+          </span>
         </div>
         <Link href="/customers">
           <Button variant="outline" size="sm" className="h-8 text-xs">
@@ -306,6 +332,10 @@ export default function CustomerDetail() {
         </Link>
       </div>
 
+      {detailLoading ? (
+        <CustomerDetailPageSkeleton />
+      ) : (
+        <>
       {/* ── Top Account Header ──────────────────────────────── */}
       <motion.div
         className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
@@ -496,6 +526,8 @@ export default function CustomerDetail() {
           </CardContent>
         </Card>
       </motion.div>
+        </>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useAppSelector } from "@/store/hooks";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,111 @@ const tooltipStyle = {
 
 const axisTickStyle = { fontSize: 11, fill: "rgba(255,255,255,0.4)" };
 
+function OverviewKpiSkeleton() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {Array.from({ length: 5 }, (_, i) => (
+        <Card key={i} className="bg-card/80 border-border/40">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start justify-between">
+              <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+              <Skeleton className="h-4 w-10 rounded-md" />
+            </div>
+            <Skeleton className="h-8 w-20 rounded-md" />
+            <Skeleton className="h-3 w-28 rounded-md" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function OverviewChartCardSkeleton({ chartHeight }: { chartHeight: number }) {
+  return (
+    <Card className="bg-card/80 border-border/40">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-4">
+          <Skeleton className="h-4 w-44 max-w-[55%]" />
+          <Skeleton className="h-3 w-28 hidden sm:block" />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Skeleton className="w-full rounded-lg" style={{ height: chartHeight }} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewGrowthChartSkeleton() {
+  return (
+    <Card className="bg-card/80 border-border/40 h-full">
+      <CardHeader className="pb-2">
+        <Skeleton className="h-4 w-52 max-w-[90%]" />
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Skeleton className="w-full rounded-lg h-[220px]" />
+        <div className="flex items-center justify-center gap-6 mt-2">
+          <Skeleton className="h-3 w-14 rounded-md" />
+          <Skeleton className="h-3 w-16 rounded-md" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewTopListSkeleton({ rows }: { rows: number }) {
+  return (
+    <Card className="bg-card/80 border-border/40 h-full">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-4 w-40 max-w-[60%]" />
+          <Skeleton className="h-3 w-14 rounded-md shrink-0" />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          {Array.from({ length: rows }, (_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-4 w-4 rounded shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <Skeleton className="h-4 w-[72%] max-w-[200px] rounded-md" />
+                <Skeleton className="h-3 w-[45%] max-w-[140px] rounded-md" />
+              </div>
+              <Skeleton className="h-6 w-16 rounded-full shrink-0" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewTopRevenueSkeleton({ rows }: { rows: number }) {
+  return (
+    <Card className="bg-card/80 border-border/40 h-full">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-4 w-44 max-w-[65%]" />
+          <Skeleton className="h-3 w-14 rounded-md shrink-0" />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          {Array.from({ length: rows }, (_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-4 w-4 rounded shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <Skeleton className="h-4 w-[68%] max-w-[180px] rounded-md" />
+                <Skeleton className="h-3 w-[50%] max-w-[160px] rounded-md" />
+              </div>
+              <Skeleton className="h-4 w-14 rounded-md shrink-0" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 /* ── alert type config ─────────────────────────────────────── */
 const alertTypeConfig: Record<string, { icon: React.ReactNode; color: string; bg: string; label: string }> = {
@@ -137,15 +243,19 @@ export default function Overview() {
   const [overviewTopCustomersByEarnings, setOverviewTopCustomersByEarnings] = useState<
     Array<{ name: string; plan: string; workers: number; earnings: number }>
   >([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
   useEffect(() => {
     console.log("[Overview] Redux auth:", auth);
   }, [auth]);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setOverviewLoading(true);
       try {
         const response = await adminOverview(filter);
+        if (cancelled) return;
         setOverviewCounts({
           totalUsers: toNumber(response.total_users),
           totalAgents: toNumber(response.total_agents),
@@ -205,6 +315,7 @@ export default function Overview() {
             : []
         );
       } catch {
+        if (cancelled) return;
         toast.error("Failed to fetch overview data.");
         setOverviewPercentages({
           totalUsersPercentage: 0,
@@ -214,8 +325,13 @@ export default function Overview() {
           totalEarningPercentage: 0,
         });
         setOverviewCustomerGrowthTrend([]);
+      } finally {
+        if (!cancelled) setOverviewLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [filter]);
 
   const filteredAlerts = alertFilter === "all"
@@ -318,6 +434,21 @@ export default function Overview() {
         </div>
       </div>
 
+      {overviewLoading ? (
+        <>
+          <OverviewKpiSkeleton />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <OverviewChartCardSkeleton chartHeight={240} />
+            <OverviewChartCardSkeleton chartHeight={240} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <OverviewGrowthChartSkeleton />
+            <OverviewTopListSkeleton rows={5} />
+            <OverviewTopRevenueSkeleton rows={5} />
+          </div>
+        </>
+      ) : (
+        <>
       {/* ── KPI Cards (2 rows of 4) ─────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {kpiCards.map((kpi, i) => {
@@ -543,6 +674,9 @@ export default function Overview() {
           </Card>
         </motion.div>
       </div>
+
+        </>
+      )}
 
     </div>
   );

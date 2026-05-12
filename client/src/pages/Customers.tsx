@@ -33,6 +33,11 @@ import {
 import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
+import {
+  CustomersKpiSkeleton,
+  CustomersSearchRowSkeleton,
+  CustomersTableSkeletonBody,
+} from "@/components/tabPageSkeletons";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -360,40 +365,48 @@ export default function Customers() {
         </Button>
       </div>
 
-      <motion.div
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3"
-        variants={fadeUp}
-        initial="hidden"
-        animate="visible"
-      >
-        <KPICard icon={<Users className="size-4" />} label="Total" value={stats.total} color="text-foreground" />
-        <KPICard icon={<TrendingUp className="size-4" />} label="Active" value={stats.active} color="text-qiko-success" />
-      </motion.div>
+      {isLoading ? (
+        <CustomersKpiSkeleton />
+      ) : (
+        <motion.div
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3"
+          variants={fadeUp}
+          initial="hidden"
+          animate="visible"
+        >
+          <KPICard icon={<Users className="size-4" />} label="Total" value={stats.total} color="text-foreground" />
+          <KPICard icon={<TrendingUp className="size-4" />} label="Active" value={stats.active} color="text-qiko-success" />
+        </motion.div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, email, industry..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-secondary/50 border-border/50"
-          />
+      {isLoading ? (
+        <CustomersSearchRowSkeleton />
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, email, industry..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-secondary/50 border-border/50"
+            />
+          </div>
+          {search && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => { setSearch(""); }}
+            >
+              Clear search
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+            {filtered.length} on this page · {totalCustomers} total
+          </span>
         </div>
-        {search && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => { setSearch(""); }}
-          >
-            Clear search
-          </Button>
-        )}
-        <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-          {filtered.length} on this page · {totalCustomers} total
-        </span>
-      </div>
+      )}
 
       <motion.div variants={fadeUp} initial="hidden" animate="visible">
         <Card className="bg-card/80 border-border/40">
@@ -414,6 +427,7 @@ export default function Customers() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {isLoading && <CustomersTableSkeletonBody />}
                   {!isLoading && filtered.map((c) => (
                     <TableRow
                       key={c.id}
@@ -464,14 +478,6 @@ export default function Customers() {
                       </TableCell>
                     </TableRow>
                   ))}
-
-                  {isLoading && (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
-                        Loading customers...
-                      </TableCell>
-                    </TableRow>
-                  )}
 
                   {!isLoading && filtered.length === 0 && (
                     <TableRow>

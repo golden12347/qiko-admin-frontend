@@ -18,6 +18,10 @@ import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { adminConversationList, type ConversationListApiResponse } from "@/services/adminConversationsApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import {
+  ConversationsSearchRowSkeleton,
+  ConversationsTableSkeletonRows,
+} from "@/components/tabPageSkeletons";
 
 interface ConversationRow {
   id: string;
@@ -202,18 +206,24 @@ export default function Conversations() {
         </div>
 
         <div className="flex items-center gap-2 mt-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search by ID, customer, worker..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pl-8 text-xs bg-secondary/30 border-border/30"
-            />
-          </div>
-          <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-            {filtered.length} on this page · {totalItems} total
-          </span>
+          {isLoading ? (
+            <ConversationsSearchRowSkeleton />
+          ) : (
+            <>
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search by ID, customer, worker..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-8 pl-8 text-xs bg-secondary/30 border-border/30"
+                />
+              </div>
+              <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+                {filtered.length} on this page · {totalItems} total
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -231,6 +241,7 @@ export default function Conversations() {
               </tr>
             </thead>
             <tbody>
+              {isLoading && <ConversationsTableSkeletonRows />}
               {!isLoading && filtered.map((conv) => (
                 <tr
                   key={conv.id}
@@ -268,13 +279,6 @@ export default function Conversations() {
               ))}
             </tbody>
           </table>
-
-          {isLoading && (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <MessageSquare className="size-10 opacity-20 mb-3" />
-              <p className="text-sm font-medium">Loading conversations...</p>
-            </div>
-          )}
 
           {!isLoading && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { ConversationDetailPageSkeleton } from "@/components/tabPageSkeletons";
 import { adminConversationDetails } from "@/services/adminConversationDetailsApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { motion } from "framer-motion";
@@ -76,12 +77,24 @@ export default function ConversationDetail() {
     return conversationId && conversationId.length > 0 ? conversationId : null;
   }, [location]);
 
+  const conversationIdForApi = useMemo(() => {
+    const raw = selectedConversationId ?? id;
+    return raw != null && String(raw).trim().length > 0 ? String(raw).trim() : null;
+  }, [selectedConversationId, id]);
+
+  const [detailLoading, setDetailLoading] = useState(() => conversationIdForApi != null);
+
   useEffect(() => {
-    const conversationIdForApi = selectedConversationId ?? id;
-    if (!conversationIdForApi) return;
+    if (conversationIdForApi == null) {
+      setDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
     (async () => {
+      setDetailLoading(true);
       try {
         const response = await adminConversationDetails(conversationIdForApi, filter);
+        if (cancelled) return;
         const dataObj = (response?.data ?? {}) as Record<string, unknown>;
         const userData = dataObj.user;
         let userNameFromApi: string | null = null;
@@ -136,17 +149,24 @@ export default function ConversationDetail() {
         });
         setApiTranscript(normalized);
       } catch {
-        setApiTranscript(null);
-        setApiWorkerName(null);
-        setApiUserName(null);
-        setApiWorkerIndustry(null);
-        setApiStartedAt(null);
-        setApiChannel(null);
+        if (!cancelled) {
+          setApiTranscript(null);
+          setApiWorkerName(null);
+          setApiUserName(null);
+          setApiWorkerIndustry(null);
+          setApiStartedAt(null);
+          setApiChannel(null);
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
       }
     })();
-  }, [filter, id, selectedConversationId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationIdForApi, filter]);
 
-  if (!selectedConversationId && !id) {
+  if (conversationIdForApi == null) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center space-y-3">
@@ -169,32 +189,37 @@ export default function ConversationDetail() {
 
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-[1300px] mx-auto">
-      {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         <div className="flex items-center gap-2 mb-2">
           <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-foreground" onClick={() => navigate("/conversations")}>
             <ArrowLeft className="size-3.5 mr-1" /> Conversations
           </Button>
         </div>
-
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-heading font-bold tracking-tight">{displayUserName}</h1>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1"><Calendar className="size-3" />{formatTranscriptDateTime(apiStartedAt ?? "—")}</span>
-              <span className="flex items-center gap-1"><MessageSquare className="size-3" />{messageCount} messages</span>
-              <span className="flex items-center gap-1">{isVoiceChannel ? <Phone className="size-3" /> : <Globe className="size-3" />}{displayChannel}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-          </div>
-        </div>
       </motion.div>
 
-      {/* Two-column layout */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
+      {detailLoading ? (
+        <ConversationDetailPageSkeleton />
+      ) : (
+        <>
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-heading font-bold tracking-tight">{displayUserName}</h1>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                  <span className="flex items-center gap-1"><Calendar className="size-3" />{formatTranscriptDateTime(apiStartedAt ?? "—")}</span>
+                  <span className="flex items-center gap-1"><MessageSquare className="size-3" />{messageCount} messages</span>
+                  <span className="flex items-center gap-1">{isVoiceChannel ? <Phone className="size-3" /> : <Globe className="size-3" />}{displayChannel}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Two-column layout */}
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
         {/* Left: Transcript */}
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: 0.1 }}>
           <Card className="bg-card border-border/40 min-h-[520px] flex flex-col shadow-sm">
@@ -316,7 +341,9 @@ export default function ConversationDetail() {
               </Card>
           </div>
         </motion.div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -4,8 +4,9 @@
 // Design: Dark Lattice — Qiko brand tokens
 // ============================================================
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,6 +23,7 @@ import {
 import { isDateInGlobalRange, parseDateValue, useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { adminRevenue } from "@/services/adminRevenueApi";
 import { toast } from "sonner";
+import { RevenueDashboardSkeleton } from "@/components/tabPageSkeletons";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -81,14 +83,22 @@ export default function Revenue() {
   });
   const [revenueOverTimeApi, setRevenueOverTimeApi] = useState<Array<{ month: string; earning: number }>>([]);
   const [customerRevenueTableApi, setCustomerRevenueTableApi] = useState<
-    Array<{ name: string; plan: string; totalRevenue: number; lastBilling: string }>
+    Array<{ id: string; name: string; plan: string; totalRevenue: number; lastBilling: string }>
   >([]);
+  const [customerRevenuePage, setCustomerRevenuePage] = useState(1);
+  const [customerRevenueTotalCount, setCustomerRevenueTotalCount] = useState(0);
+  const [customerRevenueTotalPages, setCustomerRevenueTotalPages] = useState(1);
+  const [customerTableLoading, setCustomerTableLoading] = useState(false);
+  const hasLoadedRevenueOnce = useRef(false);
+  const prevFilterKeyLoaded = useRef<string | null>(null);
+  const lastFetchedFilterKey = useRef<string | null>(null);
   const [topCustomersByRevenueApi, setTopCustomersByRevenueApi] = useState<
     Array<{ name: string; amount: number }>
   >([]);
   const [planDistributionApi, setPlanDistributionApi] = useState<
     Array<{ plan: "Basic" | "Premium" | "Enterprise"; customers: number; mrr: number }>
   >([]);
+  const [revenueLoading, setRevenueLoading] = useState(true);
 
   function toNumber(value: unknown, fallback = 0): number {
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -99,6 +109,11 @@ export default function Revenue() {
     }
     return fallback;
   }
+
+  const filterKey = useMemo(
+    () => `${filter.preset}\0${filter.customStartDate}\0${filter.customEndDate}`,
+    [filter.preset, filter.customStartDate, filter.customEndDate]
+  );
 
   const customerRevenueData = useMemo(() => customerRevenueTableApi, [customerRevenueTableApi]);
 
@@ -186,9 +201,26 @@ export default function Revenue() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (lastFetchedFilterKey.current !== filterKey && customerRevenuePage !== 1) {
+      setCustomerRevenuePage(1);
+      return;
+    }
+    lastFetchedFilterKey.current = filterKey;
+
+    const filterChanged =
+      prevFilterKeyLoaded.current !== null && prevFilterKeyLoaded.current !== filterKey;
+    if (filterChanged || !hasLoadedRevenueOnce.current) {
+      setRevenueLoading(true);
+    } else {
+      setCustomerTableLoading(true);
+    }
+
     (async () => {
       try {
-        const response = await adminRevenue(filter);
+        const response = await adminRevenue(filter, { customerRevenuePage });
+        if (cancelled) return;
         setRevenueCounts({
           totalEarning: toNumber(response.total_earning),
           averageRevenuePerUser: toNumber(response.average_revenue_per_user),
@@ -219,38 +251,66 @@ export default function Revenue() {
               }))
             : []
         );
-        setCustomerRevenueTableApi(
-          Array.isArray(response.customer_revenue_table)
-            ? response.customer_revenue_table.map((item) => {
-                const row = item as Record<string, unknown>;
-                const subscriptionPlans = Array.isArray(row.subscription_plans)
-                  ? (row.subscription_plans as Array<Record<string, unknown>>)
-                  : [];
-                const firstPlan = subscriptionPlans[0] ?? {};
+        const metaBlock = response.customer_revenue_table_meta;
+        const rawTable = response.customer_revenue_table;
+        let tableRows: Array<Record<string, unknown>> = [];
+        let tableTotal = toNumber(metaBlock?.total, 0);
+        let tableLastPage = Math.max(1, toNumber(metaBlock?.last_page, 1));
 
-                return {
-                  name: String(item.user_name ?? "—"),
-                  plan: String(
-                    firstPlan.plan_name ??
-                    firstPlan.subscription_plan_name ??
-                    item.plan_name ??
-                    row.subscription_plan_name ??
-                    row.plan ??
-                    "—"
-                  ),
-                  totalRevenue: toNumber(item.total_earnings),
-                  lastBilling: String(
-                    firstPlan.plan_created_at ??
-                    firstPlan.created_at ??
-                    item.plan_created_at ??
-                    row.created_at ??
-                    row.updated_at ??
-                    row.last_billing ??
-                    "—"
-                  ),
-                };
-              })
-            : []
+        if (Array.isArray(rawTable)) {
+          tableRows = rawTable as Array<Record<string, unknown>>;
+          if (tableTotal <= 0) tableTotal = tableRows.length;
+          if (tableLastPage <= 0) tableLastPage = 1;
+        } else if (rawTable && typeof rawTable === "object" && "data" in rawTable) {
+          const paginated = rawTable as Record<string, unknown>;
+          const inner = paginated.data;
+          tableRows = Array.isArray(inner) ? (inner as Array<Record<string, unknown>>) : [];
+          tableTotal = toNumber(paginated.total ?? metaBlock?.total, tableRows.length);
+          tableLastPage = Math.max(1, toNumber(paginated.last_page ?? metaBlock?.last_page, 1));
+        }
+
+        setCustomerRevenueTotalCount(tableTotal);
+        setCustomerRevenueTotalPages(tableLastPage);
+
+        setCustomerRevenueTableApi(
+          tableRows.map((row, rowIndex) => {
+            const item = row as Record<string, unknown> & {
+              user_name?: string;
+              plan_name?: string;
+              total_earnings?: number | string;
+              plan_created_at?: string;
+            };
+            const subscriptionPlans = Array.isArray(row.subscription_plans)
+              ? (row.subscription_plans as Array<Record<string, unknown>>)
+              : [];
+            const firstPlan = subscriptionPlans[0] ?? {};
+            const rowId = String(
+              row.id ?? row.user_id ?? item.user_id ?? `${item.user_name ?? "row"}-${rowIndex}`
+            );
+
+            return {
+              id: rowId,
+              name: String(item.user_name ?? "—"),
+              plan: String(
+                firstPlan.plan_name ??
+                firstPlan.subscription_plan_name ??
+                item.plan_name ??
+                row.subscription_plan_name ??
+                row.plan ??
+                "—"
+              ),
+              totalRevenue: toNumber(item.total_earnings ?? row.total_earnings),
+              lastBilling: String(
+                firstPlan.plan_created_at ??
+                firstPlan.created_at ??
+                item.plan_created_at ??
+                row.created_at ??
+                row.updated_at ??
+                row.last_billing ??
+                "—"
+              ),
+            };
+          })
         );
         setTopCustomersByRevenueApi(
           Array.isArray(response.top_customers_earnings)
@@ -283,6 +343,7 @@ export default function Revenue() {
           setPlanDistributionApi([]);
         }
       } catch {
+        if (cancelled) return;
         toast.error("Failed to fetch revenue data.");
         setRevenueCounts({
           totalEarning: 0,
@@ -296,11 +357,23 @@ export default function Revenue() {
         });
         setRevenueOverTimeApi([]);
         setCustomerRevenueTableApi([]);
+        setCustomerRevenueTotalCount(0);
+        setCustomerRevenueTotalPages(1);
         setTopCustomersByRevenueApi([]);
         setPlanDistributionApi([]);
+      } finally {
+        if (!cancelled) {
+          setRevenueLoading(false);
+          setCustomerTableLoading(false);
+          hasLoadedRevenueOnce.current = true;
+          prevFilterKeyLoaded.current = filterKey;
+        }
       }
     })();
-  }, [filter]);
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, filterKey, customerRevenuePage]);
 
   return (
     <div className="p-6 space-y-6">
@@ -314,6 +387,10 @@ export default function Revenue() {
         </div>
       </div>
 
+      {revenueLoading ? (
+        <RevenueDashboardSkeleton />
+      ) : (
+        <>
       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((kpi, i) => (
           <motion.div key={kpi.label} custom={i} variants={fadeUp} initial="hidden" animate="visible">
@@ -417,13 +494,15 @@ export default function Revenue() {
       <motion.div custom={9} variants={fadeUp} initial="hidden" animate="visible">
         <Card className="bg-card/80 border-border/40">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-sm font-medium">Customer Revenue Table</CardTitle>
-              <span className="text-xs text-muted-foreground">{sortedCustomers.length} customers</span>
+              <span className="text-xs text-muted-foreground">
+                {sortedCustomers.length} on this page · {customerRevenueTotalCount} total
+              </span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            <div className={`overflow-x-auto relative ${customerTableLoading ? "opacity-60 pointer-events-none" : ""}`}>
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/40 hover:bg-transparent">
@@ -448,7 +527,7 @@ export default function Revenue() {
                 </TableHeader>
                 <TableBody>
                   {sortedCustomers.map((c) => (
-                    <TableRow key={c.name} className="border-border/30 hover:bg-secondary/20 cursor-pointer">
+                    <TableRow key={c.id} className="border-border/30 hover:bg-secondary/20 cursor-pointer">
                       <TableCell>
                         <span className="text-sm font-medium">{c.name}</span>
                       </TableCell>
@@ -465,6 +544,33 @@ export default function Revenue() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+            <div className="shrink-0 px-4 py-3 border-t border-border/30 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={customerRevenuePage <= 1 || customerTableLoading || revenueLoading}
+                onClick={() => setCustomerRevenuePage((p) => p - 1)}
+              >
+                Prev
+              </Button>
+              <span>
+                Page {customerRevenuePage} / {customerRevenueTotalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={
+                  customerRevenuePage >= customerRevenueTotalPages ||
+                  customerTableLoading ||
+                  revenueLoading
+                }
+                onClick={() => setCustomerRevenuePage((p) => p + 1)}
+              >
+                Next
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -501,6 +607,8 @@ export default function Revenue() {
           </CardContent>
         </Card>
       </motion.div>
+        </>
+      )}
     </div>
   );
 }
