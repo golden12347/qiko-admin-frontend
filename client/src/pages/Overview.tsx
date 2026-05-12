@@ -496,7 +496,7 @@ export default function Overview() {
               <div className="h-[240px]">
                 {conversationsChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
@@ -504,7 +504,7 @@ export default function Overview() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickMargin={10} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), "Conversations"]} />
                       <Area
@@ -543,7 +543,7 @@ export default function Overview() {
               <div className="h-[240px]">
                 {filteredRevenueHistory.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 8, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
@@ -551,7 +551,7 @@ export default function Overview() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickMargin={10} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
                       <Area type="monotone" dataKey="earning" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />

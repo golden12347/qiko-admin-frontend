@@ -431,7 +431,7 @@ export default function Revenue() {
               <div className="h-[300px]">
                 {filteredRevenueOverTime.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={filteredRevenueOverTime} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                    <AreaChart data={filteredRevenueOverTime} margin={{ top: 8, right: 8, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
@@ -439,7 +439,13 @@ export default function Revenue() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} />
+                      <XAxis
+                      dataKey="month"
+                      tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                    />
                       <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
                       <Area type="monotone" dataKey="earning" name="Earning" stroke="#10B981" strokeWidth={2} fill="url(#mrrGrad)" />
