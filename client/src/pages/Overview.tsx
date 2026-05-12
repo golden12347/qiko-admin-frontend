@@ -493,10 +493,10 @@ export default function Overview() {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="h-[240px]">
+              <div className="h-[240px] overflow-visible">
                 {conversationsChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 22 }}>
+                  <ResponsiveContainer width="100%" height="100%" className="[&_.recharts-wrapper]:overflow-visible [&_.recharts-surface]:overflow-visible">
+                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 48, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
@@ -504,7 +504,7 @@ export default function Overview() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickMargin={10} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={0} minTickGap={8} tickMargin={10} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), "Conversations"]} />
                       <Area
@@ -540,10 +540,10 @@ export default function Overview() {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="h-[240px]">
+              <div className="h-[240px] overflow-visible">
                 {filteredRevenueHistory.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 8, left: -10, bottom: 22 }}>
+                  <ResponsiveContainer width="100%" height="100%" className="[&_.recharts-wrapper]:overflow-visible [&_.recharts-surface]:overflow-visible">
+                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 48, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
@@ -551,7 +551,7 @@ export default function Overview() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickMargin={10} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={0} minTickGap={8} tickMargin={10} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
                       <Area type="monotone" dataKey="earning" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />
@@ -582,7 +582,7 @@ export default function Overview() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={filteredCustomerGrowthTrend} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickFormatter={(v: string) => v.split(" ")[0].slice(0, 3)} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={0} minTickGap={8} tickFormatter={(v: string) => v.split(" ")[0].slice(0, 3)} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [value, name === "newCustomers" ? "New" : "Churned"]} />
                       <Bar dataKey="newCustomers" fill="#34D399" radius={[3, 3, 0, 0]} barSize={14} name="newCustomers" />
