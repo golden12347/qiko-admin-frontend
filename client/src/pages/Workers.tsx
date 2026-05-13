@@ -3,8 +3,9 @@
 // API-backed workers table with server-side pagination
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -174,9 +175,22 @@ function formatCreatedAt(value: string): string {
   });
 }
 
+function readSearchQueryParam(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("search") ?? "";
+}
+
 export default function Workers() {
+  const [, navigate] = useLocation();
+  const rawSearch = useSearch();
+  const searchFromUrl = useMemo(() => new URLSearchParams(rawSearch || "").get("search") ?? "", [rawSearch]);
+
+  const initialSearch = readSearchQueryParam();
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [committedSearch, setCommittedSearch] = useState(initialSearch);
+  const skipPageResetOnMount = useRef(true);
+
   const { filter } = useGlobalDateFilter();
-  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [workersApi, setWorkersApi] = useState<WorkerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -188,7 +202,7 @@ export default function Workers() {
   const fetchWorkers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminWorkerList(page, filter);
+      const data = await adminWorkerList(page, filter, committedSearch);
       const rows = extractWorkerArray(data).map((item) => normalizeWorker(item));
       setWorkersApi(rows);
 
@@ -232,29 +246,60 @@ export default function Workers() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter, page]);
+  }, [filter, page, committedSearch]);
 
   useEffect(() => {
     fetchWorkers();
   }, [fetchWorkers]);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return workersApi.filter((w) =>
-      w.agentName.toLowerCase().includes(q) ||
-      w.customerName.toLowerCase().includes(q)
-    );
-  }, [search, workersApi]);
+  const prevUrlSearchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevUrlSearchRef.current === null) {
+      prevUrlSearchRef.current = searchFromUrl;
+      return;
+    }
+    if (prevUrlSearchRef.current === searchFromUrl) return;
+    prevUrlSearchRef.current = searchFromUrl;
+    setSearchInput(searchFromUrl);
+    setCommittedSearch(searchFromUrl);
+  }, [searchFromUrl]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const next = searchInput.trim();
+      setCommittedSearch((prev) => (prev === next ? prev : next));
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("search");
+    if (committedSearch) params.set("search", committedSearch);
+    const qs = params.toString();
+    const next = qs ? `/workers?${qs}` : "/workers";
+    const cur = `${window.location.pathname}${window.location.search}`;
+    if (cur !== next) {
+      navigate(next, { replace: true });
+    }
+  }, [committedSearch, navigate]);
+
+  useEffect(() => {
+    if (skipPageResetOnMount.current) {
+      skipPageResetOnMount.current = false;
+      return;
+    }
+    setPage(1);
+  }, [committedSearch]);
+
+  const filtered = workersApi;
 
   const stats = useMemo(() => ({
     total: totalWorkers,
     live: totalLive,
     training: totalTraining,
   }), [totalLive, totalTraining, totalWorkers]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
 
   function handleExportCsv() {
     if (filtered.length === 0) {
@@ -344,11 +389,24 @@ export default function Workers() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               placeholder="Search workers or customers..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="pl-9 bg-secondary/50 border-border/50"
             />
           </div>
+          {searchInput.trim() && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setSearchInput("");
+                setCommittedSearch("");
+              }}
+            >
+              Clear search
+            </Button>
+          )}
           <span className="text-xs text-muted-foreground ml-auto">
             {filtered.length} on this page · {totalWorkers} total
           </span>

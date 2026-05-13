@@ -3,7 +3,7 @@
 // API-backed list with server-side pagination
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,7 +14,7 @@ import {
   Phone,
   Download,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { toast } from "sonner";
 import { adminConversationList, type ConversationListApiResponse } from "@/services/adminConversationsApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
@@ -129,10 +129,22 @@ function normalizeConversation(item: unknown): ConversationRow {
   };
 }
 
+function readSearchQueryParam(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("search") ?? "";
+}
+
 export default function Conversations() {
   const [, navigate] = useLocation();
+  const rawSearch = useSearch();
+  const searchFromUrl = useMemo(() => new URLSearchParams(rawSearch || "").get("search") ?? "", [rawSearch]);
+
+  const initialSearch = readSearchQueryParam();
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [committedSearch, setCommittedSearch] = useState(initialSearch);
+  const skipPageResetOnMount = useRef(true);
+
   const { filter } = useGlobalDateFilter();
-  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<ConversationRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -142,7 +154,7 @@ export default function Conversations() {
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminConversationList(page, filter);
+      const data = await adminConversationList(page, filter, committedSearch);
       const items = extractConversationArray(data).map((item) => normalizeConversation(item));
       setRows(items);
 
@@ -170,22 +182,54 @@ export default function Conversations() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter, page]);
+  }, [filter, page, committedSearch]);
 
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      r.id.toLowerCase().includes(q) ||
-      r.customerName.toLowerCase().includes(q) ||
-      r.workerName.toLowerCase().includes(q) ||
-      r.userName.toLowerCase().includes(q)
-    );
-  }, [rows, search]);
+  const prevUrlSearchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevUrlSearchRef.current === null) {
+      prevUrlSearchRef.current = searchFromUrl;
+      return;
+    }
+    if (prevUrlSearchRef.current === searchFromUrl) return;
+    prevUrlSearchRef.current = searchFromUrl;
+    setSearchInput(searchFromUrl);
+    setCommittedSearch(searchFromUrl);
+  }, [searchFromUrl]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const next = searchInput.trim();
+      setCommittedSearch((prev) => (prev === next ? prev : next));
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("search");
+    if (committedSearch) params.set("search", committedSearch);
+    const qs = params.toString();
+    const next = qs ? `/conversations?${qs}` : "/conversations";
+    const cur = `${window.location.pathname}${window.location.search}`;
+    if (cur !== next) {
+      navigate(next, { replace: true });
+    }
+  }, [committedSearch, navigate]);
+
+  useEffect(() => {
+    if (skipPageResetOnMount.current) {
+      skipPageResetOnMount.current = false;
+      return;
+    }
+    setPage(1);
+  }, [committedSearch]);
+
+  const filtered = rows;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -214,11 +258,24 @@ export default function Conversations() {
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                 <Input
                   placeholder="Search by ID, customer, worker..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="h-8 pl-8 text-xs bg-secondary/30 border-border/30"
                 />
               </div>
+              {searchInput.trim() && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setSearchInput("");
+                    setCommittedSearch("");
+                  }}
+                >
+                  Clear search
+                </Button>
+              )}
               <span className="text-xs text-muted-foreground ml-auto tabular-nums">
                 {filtered.length} on this page · {totalItems} total
               </span>
