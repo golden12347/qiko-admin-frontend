@@ -55,8 +55,11 @@ export function CustomersTableSkeletonBody() {
           <TableCell className="text-right">
             <Skeleton className="h-4 w-16 inline-block ml-auto" />
           </TableCell>
-          <TableCell>
+          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
             <Skeleton className="h-3 w-24" />
+          </TableCell>
+          <TableCell className="w-20 text-right">
+            <Skeleton className="h-7 w-14 inline-block ml-auto rounded-md" />
           </TableCell>
           <TableCell className="w-8">
             <Skeleton className="h-4 w-4 rounded" />

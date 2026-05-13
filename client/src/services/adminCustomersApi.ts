@@ -39,3 +39,11 @@ export async function adminCustomerList(
   return data;
 }
 
+/** DELETE `/api/v1/admin/customer-delete/{userId}` */
+export async function adminDeleteCustomer(userId: string): Promise<void> {
+  const client = new APIClient(`/api/v1/admin/customer-delete/${encodeURIComponent(userId)}`, {
+    baseURL: BACKEND_BASE_URL,
+  });
+  await client.delete();
+}
+

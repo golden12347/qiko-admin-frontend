@@ -13,6 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -33,8 +42,9 @@ import {
   MessageSquare,
   MailPlus,
   UserRound,
+  Trash2,
 } from "lucide-react";
-import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
+import { adminCustomerList, adminDeleteCustomer, type CustomerListApiResponse } from "@/services/adminCustomersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 import {
@@ -215,6 +225,8 @@ export default function Customers() {
   const [customerInvitesUi] = useState<
     Array<{ id: string; name: string; email: string; status: string; invitedAt: string }>
   >([]);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [customersApi, setCustomersApi] = useState<CustomerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalCustomers, setTotalCustomers] = useState(0);
@@ -373,6 +385,26 @@ export default function Customers() {
     // UI only — wire API when backend is ready
   }
 
+  async function confirmDeleteCustomer() {
+    if (!deleteTarget?.id) {
+      toast.error("Missing customer id.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await adminDeleteCustomer(deleteTarget.id);
+      toast.success(`Removed ${deleteTarget.name}`);
+      setDeleteTarget(null);
+      await fetchCustomers();
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const message = ax?.response?.data?.message;
+      toast.error(typeof message === "string" ? message : "Failed to delete customer.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -511,6 +543,7 @@ export default function Customers() {
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
                     <SortableHead col="joinedDate" label="Joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="joinedDate" />} />
+                    <TableHead className="text-xs font-medium text-muted-foreground text-right w-[88px]">Actions</TableHead>
                     <TableHead className="text-xs font-medium text-muted-foreground w-8" />
                   </TableRow>
                 </TableHeader>
@@ -561,6 +594,19 @@ export default function Customers() {
                         {formatDate(c.joinedDate)}
                       </TableCell>
 
+                      <TableCell className="text-right w-[88px]" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeleteTarget(c)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Delete
+                        </Button>
+                      </TableCell>
+
                       <TableCell className="w-8">
                         <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-qiko-indigo transition-colors" />
                       </TableCell>
@@ -569,7 +615,7 @@ export default function Customers() {
 
                   {!isLoading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                         No customers found for this page.
                       </TableCell>
                     </TableRow>
@@ -646,6 +692,38 @@ export default function Customers() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete customer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? (
+                <>
+                  This will remove <span className="text-foreground font-medium">{deleteTarget.name}</span> (
+                  {deleteTarget.contactEmail || "—"}) and related access. This cannot be undone.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteLoading || !deleteTarget?.id}
+              onClick={() => void confirmDeleteCustomer()}
+            >
+              {deleteLoading ? "Deleting…" : "Yes"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
