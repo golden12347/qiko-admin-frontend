@@ -29,3 +29,11 @@ export async function adminUsersList(filter?: ApiDateFilterStateLike): Promise<A
   return Array.isArray(data) ? data : [];
 }
 
+/** DELETE `/api/v1/admin/admin-users/{adminId}` — same prefix as admin-user-name list */
+export async function adminDeleteAdminUser(adminId: string): Promise<void> {
+  const client = new APIClient(`/api/v1/admin/admin-users/${encodeURIComponent(adminId)}`, {
+    baseURL: BACKEND_BASE_URL,
+  });
+  await client.delete();
+}
+

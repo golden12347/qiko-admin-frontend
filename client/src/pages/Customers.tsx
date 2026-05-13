@@ -3,13 +3,23 @@
 // API-backed table with server-side pagination
 // ============================================================
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { FormEvent, useEffect, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -29,10 +39,22 @@ import {
   ChevronRight,
   Bot,
   MessageSquare,
+  MailPlus,
+  Trash2,
 } from "lucide-react";
-import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
+import {
+  adminCustomerList,
+  adminCustomerSendInvite,
+  adminDeleteCustomer,
+  type CustomerListApiResponse,
+} from "@/services/adminCustomersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
+import {
+  CustomersKpiSkeleton,
+  CustomersSearchRowSkeleton,
+  CustomersTableSkeletonBody,
+} from "@/components/tabPageSkeletons";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -48,7 +70,7 @@ const planColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
   Premium: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
-  null: "bg-muted/20 text-muted-foreground",
+  "N/A": "bg-muted/20 text-muted-foreground",
 };
 
 type SortKey =
@@ -62,7 +84,7 @@ type SortKey =
 
 type SortDir = "asc" | "desc";
 
-type DisplayPlan = "Basic" | "Premium" | "Enterprise" | "null";
+type DisplayPlan = "Basic" | "Premium" | "Enterprise" | "N/A";
 type DisplayStatus = string;
 
 interface CustomerRow {
@@ -133,24 +155,43 @@ function extractCustomerArray(payload: CustomerListApiResponse): unknown[] {
 }
 
 function getDisplayPlan(plan: unknown): DisplayPlan {
-  if (plan === null) return "null";
+  if (plan === null || plan === undefined) return "N/A";
   if (typeof plan !== "string") return "Basic";
-  const normalized = plan.toLowerCase();
+  const trimmed = plan.trim();
+  const normalized = trimmed.toLowerCase();
+  if (normalized === "" || normalized === "null") return "N/A";
   if (normalized.includes("enterprise")) return "Enterprise";
   if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Premium";
   return "Basic";
 }
 
 function getDisplayStatus(status: unknown): DisplayStatus {
-  if (typeof status !== "string" || status.trim().length === 0) return "null";
-  return status;
+  if (typeof status !== "string" || status.trim().length === 0) return "N/A";
+  const t = status.trim();
+  if (t.toLowerCase() === "null") return "N/A";
+  return t;
 }
 
 function getStatusBadgeClass(status: string): string {
   const normalized = status.toLowerCase();
+  if (normalized === "n/a" || normalized === "null") return "bg-muted/20 text-muted-foreground border-border/40";
   if (normalized === "active") return statusColors.Active;
   if (normalized === "non-active" || normalized === "inactive") return statusColors["Non-active"];
   return "bg-muted/20 text-muted-foreground border-border/40";
+}
+
+/** Subscription column label: capitalize first letter (e.g. active → Active); keep N/A as-is. */
+function formatSubscriptionDisplay(value: string): string {
+  const t = value.trim();
+  if (t.toUpperCase() === "N/A") return "N/A";
+  if (!t) return "N/A";
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+/** Sort footer label: status column is titled "Subscription" in the table. */
+function customerSortColumnLabel(key: SortKey): string {
+  if (key === "status") return "subscription";
+  return key.replace(/([A-Z])/g, " $1").toLowerCase();
 }
 
 function normalizeCustomer(item: unknown): CustomerRow {
@@ -167,7 +208,7 @@ function normalizeCustomer(item: unknown): CustomerRow {
     name,
     slug,
     plan: isNullPlan
-      ? "null"
+      ? "N/A"
       : getDisplayPlan(row.subscription_plan_name ?? row.plan ?? row.subscription_plan ?? ""),
     status: getDisplayStatus(row.stripe_status ?? row.status ?? ""),
     workersCount: isNullPlan ? 0 : toNumber(row.agents_count ?? row.workers_count ?? row.workersCount),
@@ -193,6 +234,12 @@ export default function Customers() {
   const [sortKey, setSortKey] = useState<SortKey>("totalEarnings");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
+  const [inviteCustomerOpen, setInviteCustomerOpen] = useState(false);
+  const [customerInviteName, setCustomerInviteName] = useState("");
+  const [customerInviteEmail, setCustomerInviteEmail] = useState("");
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [customersApi, setCustomersApi] = useState<CustomerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalCustomers, setTotalCustomers] = useState(0);
@@ -305,7 +352,7 @@ export default function Customers() {
       "Name",
       "Email",
       "Plan",
-      "Status",
+      "Subscription",
       "Workers",
       "Conversations",
       "Total Earnings",
@@ -316,7 +363,7 @@ export default function Customers() {
       c.name,
       c.contactEmail,
       c.plan,
-      c.status,
+      formatSubscriptionDisplay(c.status),
       c.workersCount,
       c.conversationsTotal,
       c.totalEarnings,
@@ -341,59 +388,178 @@ export default function Customers() {
     toast.success(`Exported ${filtered.length} customers.`);
   }
 
+  async function handleCustomerInviteSubmit(e: FormEvent) {
+    e.preventDefault();
+    const user_name = customerInviteName.trim();
+    const email = customerInviteEmail.trim();
+    if (!user_name || !email) {
+      toast.error("Please enter full name and email.");
+      return;
+    }
+    setInviteSubmitting(true);
+    try {
+      const res = await adminCustomerSendInvite({ user_name, email });
+      toast.success(typeof res.message === "string" && res.message.length > 0 ? res.message : "Invite sent.");
+      setCustomerInviteName("");
+      setCustomerInviteEmail("");
+      await fetchCustomers();
+    } catch (err: unknown) {
+      const ax = err as {
+        response?: { data?: { message?: string; errors?: Record<string, string[]> } };
+      };
+      const data = ax?.response?.data;
+      const msg = data?.message;
+      const firstFieldError = data?.errors ? Object.values(data.errors).flat()[0] : undefined;
+      toast.error(
+        typeof msg === "string" && msg.length > 0
+          ? msg
+          : typeof firstFieldError === "string"
+            ? firstFieldError
+            : "Failed to send invite."
+      );
+    } finally {
+      setInviteSubmitting(false);
+    }
+  }
+
+  async function confirmDeleteCustomer() {
+    if (!deleteTarget?.id) {
+      toast.error("Missing customer id.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await adminDeleteCustomer(deleteTarget.id);
+      toast.success(`Removed ${deleteTarget.name}`);
+      setDeleteTarget(null);
+      await fetchCustomers();
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const message = ax?.response?.data?.message;
+      toast.error(typeof message === "string" ? message : "Failed to delete customer.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold font-heading tracking-tight">Customers</h1>
           <p className="text-sm text-muted-foreground mt-1">
             All organizations using the Qiko platform
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs gap-1.5 border-border/50"
-          onClick={handleExportCsv}
-        >
-          <Download className="size-3.5" /> Export CSV
-        </Button>
-      </div>
-
-      <motion.div
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3"
-        variants={fadeUp}
-        initial="hidden"
-        animate="visible"
-      >
-        <KPICard icon={<Users className="size-4" />} label="Total" value={stats.total} color="text-foreground" />
-        <KPICard icon={<TrendingUp className="size-4" />} label="Active" value={stats.active} color="text-qiko-success" />
-      </motion.div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, email, industry..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-secondary/50 border-border/50"
-          />
-        </div>
-        {search && (
+        <div className="flex items-center gap-2 shrink-0">
           <Button
-            variant="ghost"
+            variant={inviteCustomerOpen ? "secondary" : "default"}
             size="sm"
-            className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => { setSearch(""); }}
+            className="text-xs gap-1.5"
+            onClick={() => setInviteCustomerOpen((o) => !o)}
           >
-            Clear search
+            <MailPlus className="size-3.5" />
+            Invite Customer
           </Button>
-        )}
-        <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-          {filtered.length} on this page · {totalCustomers} total
-        </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5 border-border/50"
+            onClick={handleExportCsv}
+          >
+            <Download className="size-3.5" /> Export CSV
+          </Button>
+        </div>
       </div>
+
+      {inviteCustomerOpen && (
+        <Card className="bg-card/80 border-border/40">
+          <CardHeader>
+            <CardTitle className="text-base">Invite Customer</CardTitle>
+            <CardDescription>Add full name and email to invite a customer.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCustomerInviteSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="customer-invite-name">Full name</Label>
+                <Input
+                  id="customer-invite-name"
+                  type="text"
+                  placeholder="Jane Customer"
+                  value={customerInviteName}
+                  onChange={(e) => setCustomerInviteName(e.target.value)}
+                  autoComplete="name"
+                  required
+                  disabled={inviteSubmitting}
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="customer-invite-email">Email address</Label>
+                <Input
+                  id="customer-invite-email"
+                  type="email"
+                  placeholder="new-customer@company.com"
+                  value={customerInviteEmail}
+                  onChange={(e) => setCustomerInviteEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                  disabled={inviteSubmitting}
+                />
+              </div>
+              <div className="md:col-span-3 flex items-center justify-end">
+                <Button type="submit" className="gap-1.5" disabled={inviteSubmitting}>
+                  <MailPlus className="size-3.5" />
+                  {inviteSubmitting ? "Sending…" : "Send Invite"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-6">
+      {isLoading ? (
+        <CustomersKpiSkeleton />
+      ) : (
+        <motion.div
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3"
+          variants={fadeUp}
+          initial="hidden"
+          animate="visible"
+        >
+          <KPICard icon={<Users className="size-4" />} label="Total" value={stats.total} color="text-foreground" />
+          <KPICard icon={<TrendingUp className="size-4" />} label="Active" value={stats.active} color="text-qiko-success" />
+        </motion.div>
+      )}
+
+      {isLoading ? (
+        <CustomersSearchRowSkeleton />
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, email, industry..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-secondary/50 border-border/50"
+            />
+          </div>
+          {search && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => { setSearch(""); }}
+            >
+              Clear search
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+            {filtered.length} on this page · {totalCustomers} total
+          </span>
+        </div>
+      )}
 
       <motion.div variants={fadeUp} initial="hidden" animate="visible">
         <Card className="bg-card/80 border-border/40">
@@ -405,15 +571,17 @@ export default function Customers() {
                     <SortableHead col="name" label="Customer" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="name" />} />
                     <TableHead className="text-xs font-medium text-muted-foreground">Email</TableHead>
                     <SortableHead col="plan" label="Plan" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="plan" />} />
-                    <SortableHead col="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="status" />} />
+                    <SortableHead col="status" label="Subscription" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="status" />} />
                     <SortableHead col="workersCount" label="Workers" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="workersCount" />} align="right" />
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
                     <SortableHead col="joinedDate" label="Joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="joinedDate" />} />
+                    <TableHead className="text-xs font-medium text-muted-foreground text-right w-[88px]">Actions</TableHead>
                     <TableHead className="text-xs font-medium text-muted-foreground w-8" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {isLoading && <CustomersTableSkeletonBody />}
                   {!isLoading && filtered.map((c) => (
                     <TableRow
                       key={c.id}
@@ -426,14 +594,14 @@ export default function Customers() {
                       <TableCell className="text-xs text-muted-foreground">{c.contactEmail || "—"}</TableCell>
 
                       <TableCell>
-                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan]}`}>
+                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan] ?? planColors["N/A"]}`}>
                           {c.plan}
                         </Badge>
                       </TableCell>
 
                       <TableCell>
                         <Badge variant="outline" className={`text-[10px] ${getStatusBadgeClass(c.status)}`}>
-                          {c.status}
+                          {formatSubscriptionDisplay(c.status)}
                         </Badge>
                       </TableCell>
 
@@ -459,23 +627,28 @@ export default function Customers() {
                         {formatDate(c.joinedDate)}
                       </TableCell>
 
+                      <TableCell className="text-right w-[88px]" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeleteTarget(c)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Delete
+                        </Button>
+                      </TableCell>
+
                       <TableCell className="w-8">
                         <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-qiko-indigo transition-colors" />
                       </TableCell>
                     </TableRow>
                   ))}
 
-                  {isLoading && (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
-                        Loading customers...
-                      </TableCell>
-                    </TableRow>
-                  )}
-
                   {!isLoading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                         No customers found for this page.
                       </TableCell>
                     </TableRow>
@@ -488,7 +661,7 @@ export default function Customers() {
       </motion.div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Showing page {page} of {totalPages} · Sorted by {sortKey.replace(/([A-Z])/g, " $1").toLowerCase()} ({sortDir})</span>
+        <span>Showing page {page} of {totalPages} · Sorted by {customerSortColumnLabel(sortKey)} ({sortDir})</span>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -514,6 +687,39 @@ export default function Customers() {
           <span className="ml-2">Click any row to view customer details</span>
         </div>
       </div>
+      </div>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete customer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? (
+                <>
+                  This will remove <span className="text-foreground font-medium">{deleteTarget.name}</span> (
+                  {deleteTarget.contactEmail || "—"}) and related access. This cannot be undone.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteLoading || !deleteTarget?.id}
+              onClick={() => void confirmDeleteCustomer()}
+            >
+              {deleteLoading ? "Deleting…" : "Yes"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

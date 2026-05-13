@@ -29,12 +29,27 @@ export interface RevenueApiResponse {
     month?: string;
     earning?: number | string;
   }>;
-  customer_revenue_table?: Array<{
-    user_name?: string;
-    plan_name?: string;
-    total_earnings?: number | string;
-    plan_created_at?: string;
-  }>;
+  /** Table rows, or a Laravel-style paginator `{ data: rows, total, last_page, ... }`. */
+  customer_revenue_table?:
+    | Array<{
+        user_name?: string;
+        plan_name?: string;
+        total_earnings?: number | string;
+        plan_created_at?: string;
+      }>
+    | {
+        data?: unknown[];
+        total?: number | string;
+        current_page?: number | string;
+        last_page?: number | string;
+        per_page?: number | string;
+      };
+  customer_revenue_table_meta?: {
+    total?: number | string;
+    current_page?: number | string;
+    last_page?: number | string;
+    per_page?: number | string;
+  };
 }
 
 interface RevenueApiEnvelope {
@@ -42,10 +57,17 @@ interface RevenueApiEnvelope {
   data?: RevenueApiResponse;
 }
 
-export async function adminRevenue(filter?: ApiDateFilterStateLike): Promise<RevenueApiResponse> {
-  const { data } = await revenueClient.get<RevenueApiResponse | RevenueApiEnvelope>(
-    buildDateFilterParams(filter)
-  );
+export async function adminRevenue(
+  filter?: ApiDateFilterStateLike,
+  options?: { customerRevenuePage?: number }
+): Promise<RevenueApiResponse> {
+  const params: Record<string, unknown> = {
+    ...buildDateFilterParams(filter),
+  };
+  if (options?.customerRevenuePage != null && options.customerRevenuePage > 0) {
+    params.page = options.customerRevenuePage;
+  }
+  const { data } = await revenueClient.get<RevenueApiResponse | RevenueApiEnvelope>(params);
   const envelope = data as RevenueApiEnvelope;
   return envelope?.data && typeof envelope.data === "object"
     ? envelope.data

@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useAppSelector } from "@/store/hooks";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,111 @@ const tooltipStyle = {
 
 const axisTickStyle = { fontSize: 11, fill: "rgba(255,255,255,0.4)" };
 
+function OverviewKpiSkeleton() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {Array.from({ length: 5 }, (_, i) => (
+        <Card key={i} className="bg-card/80 border-border/40">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start justify-between">
+              <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+              <Skeleton className="h-4 w-10 rounded-md" />
+            </div>
+            <Skeleton className="h-8 w-20 rounded-md" />
+            <Skeleton className="h-3 w-28 rounded-md" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function OverviewChartCardSkeleton({ chartHeight }: { chartHeight: number }) {
+  return (
+    <Card className="bg-card/80 border-border/40">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-4">
+          <Skeleton className="h-4 w-44 max-w-[55%]" />
+          <Skeleton className="h-3 w-28 hidden sm:block" />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Skeleton className="w-full rounded-lg" style={{ height: chartHeight }} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewGrowthChartSkeleton() {
+  return (
+    <Card className="bg-card/80 border-border/40 h-full">
+      <CardHeader className="pb-2">
+        <Skeleton className="h-4 w-52 max-w-[90%]" />
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Skeleton className="w-full rounded-lg h-[220px]" />
+        <div className="flex items-center justify-center gap-6 mt-2">
+          <Skeleton className="h-3 w-14 rounded-md" />
+          <Skeleton className="h-3 w-16 rounded-md" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewTopListSkeleton({ rows }: { rows: number }) {
+  return (
+    <Card className="bg-card/80 border-border/40 h-full">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-4 w-40 max-w-[60%]" />
+          <Skeleton className="h-3 w-14 rounded-md shrink-0" />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          {Array.from({ length: rows }, (_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-4 w-4 rounded shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <Skeleton className="h-4 w-[72%] max-w-[200px] rounded-md" />
+                <Skeleton className="h-3 w-[45%] max-w-[140px] rounded-md" />
+              </div>
+              <Skeleton className="h-6 w-16 rounded-full shrink-0" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewTopRevenueSkeleton({ rows }: { rows: number }) {
+  return (
+    <Card className="bg-card/80 border-border/40 h-full">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-4 w-44 max-w-[65%]" />
+          <Skeleton className="h-3 w-14 rounded-md shrink-0" />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          {Array.from({ length: rows }, (_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-4 w-4 rounded shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <Skeleton className="h-4 w-[68%] max-w-[180px] rounded-md" />
+                <Skeleton className="h-3 w-[50%] max-w-[160px] rounded-md" />
+              </div>
+              <Skeleton className="h-4 w-14 rounded-md shrink-0" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 /* ── alert type config ─────────────────────────────────────── */
 const alertTypeConfig: Record<string, { icon: React.ReactNode; color: string; bg: string; label: string }> = {
@@ -137,15 +243,19 @@ export default function Overview() {
   const [overviewTopCustomersByEarnings, setOverviewTopCustomersByEarnings] = useState<
     Array<{ name: string; plan: string; workers: number; earnings: number }>
   >([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
   useEffect(() => {
     console.log("[Overview] Redux auth:", auth);
   }, [auth]);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setOverviewLoading(true);
       try {
         const response = await adminOverview(filter);
+        if (cancelled) return;
         setOverviewCounts({
           totalUsers: toNumber(response.total_users),
           totalAgents: toNumber(response.total_agents),
@@ -205,6 +315,7 @@ export default function Overview() {
             : []
         );
       } catch {
+        if (cancelled) return;
         toast.error("Failed to fetch overview data.");
         setOverviewPercentages({
           totalUsersPercentage: 0,
@@ -214,8 +325,13 @@ export default function Overview() {
           totalEarningPercentage: 0,
         });
         setOverviewCustomerGrowthTrend([]);
+      } finally {
+        if (!cancelled) setOverviewLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [filter]);
 
   const filteredAlerts = alertFilter === "all"
@@ -318,6 +434,21 @@ export default function Overview() {
         </div>
       </div>
 
+      {overviewLoading ? (
+        <>
+          <OverviewKpiSkeleton />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <OverviewChartCardSkeleton chartHeight={240} />
+            <OverviewChartCardSkeleton chartHeight={240} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <OverviewGrowthChartSkeleton />
+            <OverviewTopListSkeleton rows={5} />
+            <OverviewTopRevenueSkeleton rows={5} />
+          </div>
+        </>
+      ) : (
+        <>
       {/* ── KPI Cards (2 rows of 4) ─────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {kpiCards.map((kpi, i) => {
@@ -362,10 +493,10 @@ export default function Overview() {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="h-[240px]">
+              <div className="h-[240px] overflow-visible">
                 {conversationsChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%" className="[&_.recharts-wrapper]:overflow-visible [&_.recharts-surface]:overflow-visible">
+                    <AreaChart data={conversationsChartData} margin={{ top: 8, right: 48, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
@@ -373,7 +504,7 @@ export default function Overview() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={0} minTickGap={8} tickMargin={10} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), "Conversations"]} />
                       <Area
@@ -409,10 +540,10 @@ export default function Overview() {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="h-[240px]">
+              <div className="h-[240px] overflow-visible">
                 {filteredRevenueHistory.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%" className="[&_.recharts-wrapper]:overflow-visible [&_.recharts-surface]:overflow-visible">
+                    <AreaChart data={filteredRevenueHistory} margin={{ top: 8, right: 48, left: -10, bottom: 22 }}>
                       <defs>
                         <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
@@ -420,7 +551,7 @@ export default function Overview() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={0} minTickGap={8} tickMargin={10} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${fmt(v)}`} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "Earning"]} />
                       <Area type="monotone" dataKey="earning" stroke="#34D399" strokeWidth={2} fill="url(#mrrGrad)" />
@@ -451,7 +582,7 @@ export default function Overview() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={filteredCustomerGrowthTrend} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={1} tickFormatter={(v: string) => v.split(" ")[0].slice(0, 3)} />
+                      <XAxis dataKey="month" tick={axisTickStyle} tickLine={false} axisLine={false} interval={0} minTickGap={8} tickFormatter={(v: string) => v.split(" ")[0].slice(0, 3)} />
                       <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value: number, name: string) => [value, name === "newCustomers" ? "New" : "Churned"]} />
                       <Bar dataKey="newCustomers" fill="#34D399" radius={[3, 3, 0, 0]} barSize={14} name="newCustomers" />
@@ -543,6 +674,9 @@ export default function Overview() {
           </Card>
         </motion.div>
       </div>
+
+        </>
+      )}
 
     </div>
   );
