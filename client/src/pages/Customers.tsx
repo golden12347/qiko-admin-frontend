@@ -3,13 +3,15 @@
 // API-backed table with server-side pagination
 // ============================================================
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { FormEvent, useEffect, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -29,6 +31,8 @@ import {
   ChevronRight,
   Bot,
   MessageSquare,
+  MailPlus,
+  UserRound,
 } from "lucide-react";
 import { adminCustomerList, type CustomerListApiResponse } from "@/services/adminCustomersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
@@ -54,6 +58,12 @@ const planColors: Record<string, string> = {
   Premium: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
   null: "bg-muted/20 text-muted-foreground",
+};
+
+const customerInviteStatusBadge: Record<string, string> = {
+  pending: "bg-qiko-warning/15 text-qiko-warning border-qiko-warning/30",
+  accepted: "bg-qiko-success/15 text-qiko-success border-qiko-success/30",
+  revoked: "bg-muted/40 text-muted-foreground border-border/30",
 };
 
 type SortKey =
@@ -198,6 +208,13 @@ export default function Customers() {
   const [sortKey, setSortKey] = useState<SortKey>("totalEarnings");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
+  const [inviteCustomerOpen, setInviteCustomerOpen] = useState(false);
+  const [customerInviteName, setCustomerInviteName] = useState("");
+  const [customerInviteEmail, setCustomerInviteEmail] = useState("");
+  /** UI-only — replace with API-driven list when backend exists */
+  const [customerInvitesUi] = useState<
+    Array<{ id: string; name: string; email: string; status: string; invitedAt: string }>
+  >([]);
   const [customersApi, setCustomersApi] = useState<CustomerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalCustomers, setTotalCustomers] = useState(0);
@@ -256,6 +273,11 @@ export default function Customers() {
     total: totalCustomers,
     active: activeStripeStatusCount,
   }), [activeStripeStatusCount, totalCustomers]);
+
+  const pendingCustomerInvites = useMemo(
+    () => customerInvitesUi.filter((i) => String(i.status).toLowerCase() === "pending").length,
+    [customerInvitesUi]
+  );
 
   const filtered = useMemo(() => {
     const result = customersApi.filter((c) => {
@@ -346,25 +368,91 @@ export default function Customers() {
     toast.success(`Exported ${filtered.length} customers.`);
   }
 
+  function handleCustomerInviteSubmit(e: FormEvent) {
+    e.preventDefault();
+    // UI only — wire API when backend is ready
+  }
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold font-heading tracking-tight">Customers</h1>
           <p className="text-sm text-muted-foreground mt-1">
             All organizations using the Qiko platform
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs gap-1.5 border-border/50"
-          onClick={handleExportCsv}
-        >
-          <Download className="size-3.5" /> Export CSV
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant={inviteCustomerOpen ? "secondary" : "default"}
+            size="sm"
+            className="text-xs gap-1.5"
+            onClick={() => setInviteCustomerOpen((o) => !o)}
+          >
+            <MailPlus className="size-3.5" />
+            Invite Customer
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5 border-border/50"
+            onClick={handleExportCsv}
+          >
+            <Download className="size-3.5" /> Export CSV
+          </Button>
+        </div>
       </div>
 
+      {inviteCustomerOpen && (
+        <Card className="bg-card/80 border-border/40">
+          <CardHeader>
+            <CardTitle className="text-base">Invite Customer</CardTitle>
+            <CardDescription>Add full name and email to invite a customer.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCustomerInviteSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="customer-invite-name">Full name</Label>
+                <Input
+                  id="customer-invite-name"
+                  type="text"
+                  placeholder="Jane Customer"
+                  value={customerInviteName}
+                  onChange={(e) => setCustomerInviteName(e.target.value)}
+                  autoComplete="name"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="customer-invite-email">Email address</Label>
+                <Input
+                  id="customer-invite-email"
+                  type="email"
+                  placeholder="new-customer@company.com"
+                  value={customerInviteEmail}
+                  onChange={(e) => setCustomerInviteEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+              <div className="md:col-span-3 flex items-center justify-end">
+                <Button type="submit" className="gap-1.5">
+                  <MailPlus className="size-3.5" />
+                  Send Invite
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs defaultValue="customers" className="space-y-4">
+        <TabsList className="bg-secondary/40">
+          <TabsTrigger value="customers">Customers ({totalCustomers})</TabsTrigger>
+          <TabsTrigger value="invites">Invites ({customerInvitesUi.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="customers" className="space-y-6 mt-0 outline-none">
       {isLoading ? (
         <CustomersKpiSkeleton />
       ) : (
@@ -520,6 +608,44 @@ export default function Customers() {
           <span className="ml-2">Click any row to view customer details</span>
         </div>
       </div>
+        </TabsContent>
+
+        <TabsContent value="invites" className="space-y-4 mt-0 outline-none">
+          <Card className="bg-card/80 border-border/40">
+            <CardHeader>
+              <CardTitle className="text-base">Invitation History</CardTitle>
+              <CardDescription>{pendingCustomerInvites} pending invitations</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {customerInvitesUi.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
+                  No customer invitations sent yet.
+                </div>
+              )}
+              {customerInvitesUi.map((invite) => (
+                <div key={invite.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{invite.name || invite.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {invite.email}
+                        {invite.invitedAt ? ` • ${formatDate(invite.invitedAt)}` : ""}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={customerInviteStatusBadge[String(invite.status).toLowerCase()] ?? customerInviteStatusBadge.pending}
+                    >
+                      <UserRound className="size-3 mr-1" />
+                      {invite.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

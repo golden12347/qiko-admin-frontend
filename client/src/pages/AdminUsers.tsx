@@ -5,9 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MailPlus, RefreshCw, UserRound, XCircle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { MailPlus, RefreshCw, Trash2, UserRound, XCircle } from "lucide-react";
 import { AdminInvite, useAuth } from "@/contexts/AuthContext";
-import { adminUsersList, type AdminUserNameItem } from "@/services/adminUsersListApi";
+import { adminUsersList, adminDeleteAdminUser, type AdminUserNameItem } from "@/services/adminUsersListApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 import { AdminInvitesListSkeleton, AdminUsersListSkeleton } from "@/components/tabPageSkeletons";
@@ -47,6 +56,8 @@ export default function AdminUsers() {
   const [apiLoading, setApiLoading] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
   const [apiRows, setApiRows] = useState<AdminUserNameItem[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchAdminUsers = useCallback(async () => {
     setApiLoading(true);
@@ -76,7 +87,7 @@ export default function AdminUsers() {
       apiRows
         .filter((row) => row.status === true && String(row.invite_status ?? "").toLowerCase() === "accepted")
         .map((row) => ({
-          id: String(row.id ?? crypto.randomUUID()),
+          id: row.id != null && String(row.id).trim() !== "" ? String(row.id) : "",
           name: String(row.name ?? "—"),
           email: String(row.email ?? "—"),
           role: "admin" as const,
@@ -141,6 +152,30 @@ export default function AdminUsers() {
     toast.success(`Invite revoked for ${invite.email}`);
   }
 
+  function handleDeleteAdminUser(user: { id: string; name: string; email: string }) {
+    setDeleteTarget(user);
+  }
+
+  async function confirmDeleteAdminUser() {
+    if (!deleteTarget?.id) {
+      toast.error("Missing user id; cannot delete.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await adminDeleteAdminUser(deleteTarget.id);
+      toast.success(`Removed ${deleteTarget.email}`);
+      setDeleteTarget(null);
+      await fetchAdminUsers();
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const message = ax?.response?.data?.message;
+      toast.error(typeof message === "string" ? message : "Failed to delete admin user.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -203,7 +238,7 @@ export default function AdminUsers() {
             <CardContent className="space-y-3">
               {apiLoading && <AdminUsersListSkeleton rows={5} />}
               {!apiLoading && displayUsers.map((user) => (
-                <div key={user.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 flex items-center justify-between gap-4">
+                <div key={user.id || user.email} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{user.name}</p>
                     <p className="text-xs text-muted-foreground">{user.email}</p>
@@ -212,6 +247,19 @@ export default function AdminUsers() {
                     <Badge variant="outline" className={roleBadge[(user as { role?: string }).role ?? "admin"]}>
                       {user.role}
                     </Badge>
+                    {displayUsers.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        disabled={!apiLoaded || !user.id}
+                        onClick={() => handleDeleteAdminUser(user)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -271,6 +319,38 @@ export default function AdminUsers() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete admin user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? (
+                <>
+                  This will remove <span className="text-foreground font-medium">{deleteTarget.name}</span> (
+                  {deleteTarget.email}) from admin access. This cannot be undone.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteLoading || !deleteTarget?.id}
+              onClick={() => void confirmDeleteAdminUser()}
+            >
+              {deleteLoading ? "Deleting…" : "Yes"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
