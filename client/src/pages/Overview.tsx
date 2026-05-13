@@ -234,9 +234,11 @@ export default function Overview() {
   });
   const [overviewConversationsTrend, setOverviewConversationsTrend] = useState<Array<{ month: string; conversations: number }>>([]);
   const [overviewRevenueOverTime, setOverviewRevenueOverTime] = useState<Array<{ month: string; earning: number }>>([]);
+  /*
   const [overviewCustomerGrowthTrend, setOverviewCustomerGrowthTrend] = useState<
     Array<{ month: string; newCustomers: number; churnedCustomers: number }>
   >([]);
+  */
   const [overviewTopCustomersByUsage, setOverviewTopCustomersByUsage] = useState<
     Array<{ name: string; conversations: number; subscriptionPlanName: string }>
   >([]);
@@ -295,6 +297,7 @@ export default function Overview() {
               }))
             : []
         );
+        /*
         setOverviewCustomerGrowthTrend(
           Array.isArray(response.customer_growth_trend)
             ? response.customer_growth_trend.map((item) => ({
@@ -304,6 +307,7 @@ export default function Overview() {
               }))
             : []
         );
+        */
         setOverviewTopCustomersByEarnings(
           Array.isArray(response.top_customers_earnings)
             ? response.top_customers_earnings.map((item) => ({
@@ -324,7 +328,7 @@ export default function Overview() {
           totalSubscriptionsPercentage: 0,
           totalEarningPercentage: 0,
         });
-        setOverviewCustomerGrowthTrend([]);
+        // setOverviewCustomerGrowthTrend([]);
       } finally {
         if (!cancelled) setOverviewLoading(false);
       }
@@ -346,9 +350,11 @@ export default function Overview() {
   const filteredRevenueHistory = overviewRevenueOverTime.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
+  /*
   const filteredCustomerGrowthTrend = overviewCustomerGrowthTrend.filter((point) =>
     isDateInGlobalRange(parseDateValue(point.month) ?? point.month, filter)
   );
+  */
 
   const kpiCards: Array<{
     label: string;
@@ -569,8 +575,8 @@ export default function Overview() {
       </div>
 
       {/* ── Row 2: New vs Churned + Top by Usage + Top by Earnings ─ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* New vs Churned customers */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* New vs Churned customers (temporarily disabled)
         <motion.div variants={fadeUp} custom={12} initial="hidden" animate="visible">
           <Card className="bg-card/80 border-border/40 h-full">
             <CardHeader className="pb-2">
@@ -602,6 +608,7 @@ export default function Overview() {
             </CardContent>
           </Card>
         </motion.div>
+        */}
 
         {/* Top customers by usage */}
         <motion.div variants={fadeUp} custom={13} initial="hidden" animate="visible">

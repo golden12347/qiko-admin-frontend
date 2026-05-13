@@ -31,6 +31,8 @@ const inviteStatusBadge: Record<string, string> = {
   pending: "bg-qiko-warning/15 text-qiko-warning border-qiko-warning/30",
   accepted: "bg-qiko-success/15 text-qiko-success border-qiko-success/30",
   revoked: "bg-muted/40 text-muted-foreground border-border/30",
+  send: "bg-qiko-success/15 text-qiko-success border-qiko-success/30",
+  sent: "bg-qiko-success/15 text-qiko-success border-qiko-success/30",
 };
 
 function formatDate(value?: string) {
@@ -45,6 +47,27 @@ function formatDate(value?: string) {
     minute: "2-digit",
     hour12: true,
   });
+}
+
+function formatRoleLabel(role: string | undefined): string {
+  const r = (role ?? "admin").trim().toLowerCase();
+  if (!r) return "Admin";
+  return r.charAt(0).toUpperCase() + r.slice(1);
+}
+
+function inviteStatusBadgeKey(status: string | undefined): string {
+  const s = (status ?? "pending").trim().toLowerCase();
+  if (s === "send" || s === "sent") return "send";
+  return s;
+}
+
+function formatInviteStatusLabel(status: string | undefined): string {
+  const s = (status ?? "pending").trim().toLowerCase();
+  if (s === "send" || s === "sent") return "Invite Sent";
+  if (s === "pending") return "Pending";
+  if (s === "accepted") return "Accepted";
+  if (s === "revoked") return "Revoked";
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "Pending";
 }
 
 export default function AdminUsers() {
@@ -244,8 +267,8 @@ export default function AdminUsers() {
                     <p className="text-xs text-muted-foreground">{user.email}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant="outline" className={roleBadge[(user as { role?: string }).role ?? "admin"]}>
-                      {user.role}
+                    <Badge variant="outline" className={roleBadge[String((user as { role?: string }).role ?? "admin").toLowerCase()]}>
+                      {formatRoleLabel((user as { role?: string }).role)}
                     </Badge>
                     {displayUsers.length > 1 && (
                       <Button
@@ -292,9 +315,15 @@ export default function AdminUsers() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={inviteStatusBadge[(invite as { status?: string }).status ?? "pending"]}>
+                      <Badge
+                        variant="outline"
+                        className={
+                          inviteStatusBadge[inviteStatusBadgeKey((invite as { status?: string }).status)] ??
+                          inviteStatusBadge.pending
+                        }
+                      >
                         <UserRound className="size-3 mr-1" />
-                        {invite.status}
+                        {formatInviteStatusLabel((invite as { status?: string }).status)}
                       </Badge>
                     </div>
                   </div>
