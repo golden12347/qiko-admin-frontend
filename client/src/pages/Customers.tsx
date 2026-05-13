@@ -3,9 +3,9 @@
 // API-backed table with server-side pagination
 // ============================================================
 
-import { FormEvent, useEffect, useState, useMemo, useCallback } from "react";
+import { FormEvent, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -227,10 +227,22 @@ function normalizeCustomer(item: unknown): CustomerRow {
   };
 }
 
+function readSearchQueryParam(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("search") ?? "";
+}
+
 export default function Customers() {
   const [, navigate] = useLocation();
+  const rawSearch = useSearch();
+  const searchFromUrl = useMemo(() => new URLSearchParams(rawSearch || "").get("search") ?? "", [rawSearch]);
+
+  const initialSearch = readSearchQueryParam();
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [committedSearch, setCommittedSearch] = useState(initialSearch);
+  const skipPageResetOnMount = useRef(true);
+
   const { filter } = useGlobalDateFilter();
-  const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("totalEarnings");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
@@ -249,8 +261,7 @@ export default function Customers() {
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminCustomerList(page, filter);
-      console.log("[Customers] customer-list API response:", data);
+      const data = await adminCustomerList(page, filter, committedSearch);
       const list = extractCustomerArray(data);
 
       const normalized = list.map((item) => normalizeCustomer(item));
@@ -288,11 +299,52 @@ export default function Customers() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter, page]);
+  }, [filter, page, committedSearch]);
 
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  const prevUrlSearchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevUrlSearchRef.current === null) {
+      prevUrlSearchRef.current = searchFromUrl;
+      return;
+    }
+    if (prevUrlSearchRef.current === searchFromUrl) return;
+    prevUrlSearchRef.current = searchFromUrl;
+    setSearchInput(searchFromUrl);
+    setCommittedSearch(searchFromUrl);
+  }, [searchFromUrl]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const next = searchInput.trim();
+      setCommittedSearch((prev) => (prev === next ? prev : next));
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("search");
+    if (committedSearch) params.set("search", committedSearch);
+    const qs = params.toString();
+    const next = qs ? `/customers?${qs}` : "/customers";
+    const cur = `${window.location.pathname}${window.location.search}`;
+    if (cur !== next) {
+      navigate(next, { replace: true });
+    }
+  }, [committedSearch, navigate]);
+
+  useEffect(() => {
+    if (skipPageResetOnMount.current) {
+      skipPageResetOnMount.current = false;
+      return;
+    }
+    setPage(1);
+  }, [committedSearch]);
 
   const stats = useMemo(() => ({
     total: totalCustomers,
@@ -300,15 +352,7 @@ export default function Customers() {
   }), [activeStripeStatusCount, totalCustomers]);
 
   const filtered = useMemo(() => {
-    const result = customersApi.filter((c) => {
-      const q = search.toLowerCase();
-      return (
-        c.name.toLowerCase().includes(q) ||
-        c.contactEmail.toLowerCase().includes(q) ||
-        c.industry.toLowerCase().includes(q)
-      );
-    });
-
+    const result = [...customersApi];
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
@@ -324,7 +368,7 @@ export default function Customers() {
     });
 
     return result;
-  }, [customersApi, search, sortKey, sortDir]);
+  }, [customersApi, sortKey, sortDir]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -540,17 +584,20 @@ export default function Customers() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               placeholder="Search by name, email, industry..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="pl-9 bg-secondary/50 border-border/50"
             />
           </div>
-          {search && (
+          {searchInput.trim() && (
             <Button
               variant="ghost"
               size="sm"
               className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => { setSearch(""); }}
+              onClick={() => {
+                setSearchInput("");
+                setCommittedSearch("");
+              }}
             >
               Clear search
             </Button>

@@ -26,16 +26,22 @@ export interface CustomerListApiResponse {
 
 /**
  * Fetch paginated admin customer list.
- * Uses same APIClient pattern as login/logout endpoints.
+ * Optional `search` is sent as a query param when non-empty (server-side search).
  */
 export async function adminCustomerList(
   page: number,
-  filter?: ApiDateFilterStateLike
+  filter?: ApiDateFilterStateLike,
+  search?: string
 ): Promise<CustomerListApiResponse> {
-  const { data } = await customerListClient.get<CustomerListApiResponse>({
+  const q = (search ?? "").trim();
+  const params: Record<string, unknown> = {
     page,
     ...buildDateFilterParams(filter),
-  });
+  };
+  if (q.length > 0) {
+    params.search = q;
+  }
+  const { data } = await customerListClient.get<CustomerListApiResponse>(params);
   return data;
 }
 

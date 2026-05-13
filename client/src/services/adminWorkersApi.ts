@@ -28,12 +28,18 @@ export interface WorkerListApiResponse {
 
 export async function adminWorkerList(
   page: number,
-  filter?: ApiDateFilterStateLike
+  filter?: ApiDateFilterStateLike,
+  search?: string
 ): Promise<WorkerListApiResponse> {
-  const { data } = await workerListClient.get<WorkerListApiResponse>({
+  const q = (search ?? "").trim();
+  const params: Record<string, unknown> = {
     page,
     ...buildDateFilterParams(filter),
-  });
+  };
+  if (q.length > 0) {
+    params.search = q;
+  }
+  const { data } = await workerListClient.get<WorkerListApiResponse>(params);
   return data;
 }
 

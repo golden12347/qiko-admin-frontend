@@ -24,12 +24,18 @@ export interface ConversationListApiResponse {
 
 export async function adminConversationList(
   page: number,
-  filter?: ApiDateFilterStateLike
+  filter?: ApiDateFilterStateLike,
+  search?: string
 ): Promise<ConversationListApiResponse> {
-  const { data } = await conversationListClient.get<ConversationListApiResponse>({
+  const q = (search ?? "").trim();
+  const params: Record<string, unknown> = {
     page,
     ...buildDateFilterParams(filter),
-  });
+  };
+  if (q.length > 0) {
+    params.search = q;
+  }
+  const { data } = await conversationListClient.get<ConversationListApiResponse>(params);
   return data;
 }
 
