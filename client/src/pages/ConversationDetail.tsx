@@ -58,7 +58,12 @@ function capitalizeFirstWordFirstLetter(value: string): string {
 
 function formatWorkerType(value: string | null): string {
   if (!value || value.trim().length === 0) return "—";
-  return value.replace(/_/g, " ");
+  const s = value.replace(/_/g, " ").trim();
+  if (!s) return "—";
+  return s
+    .split(/\s+/)
+    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .join(" ");
 }
 
 export default function ConversationDetail() {

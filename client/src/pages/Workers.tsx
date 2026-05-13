@@ -143,7 +143,12 @@ function typeBadgeClass(type: string): string {
 }
 
 function formatTypeLabel(type: string): string {
-  return type.replace(/_/g, " ");
+  const s = type.replace(/_/g, " ").trim();
+  if (!s) return "—";
+  return s
+    .split(/\s+/)
+    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .join(" ");
 }
 
 function formatStatusLabel(status: string): string {
@@ -271,7 +276,7 @@ export default function Workers() {
     const rows = filtered.map((w) => [
       w.agentName,
       w.customerName,
-      w.type,
+      formatTypeLabel(w.type),
       formatStatusLabel(w.status),
       w.channels.join(" | "),
       w.createdAt,

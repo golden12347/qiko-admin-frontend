@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -41,10 +40,14 @@ import {
   Bot,
   MessageSquare,
   MailPlus,
-  UserRound,
   Trash2,
 } from "lucide-react";
-import { adminCustomerList, adminDeleteCustomer, type CustomerListApiResponse } from "@/services/adminCustomersApi";
+import {
+  adminCustomerList,
+  adminCustomerSendInvite,
+  adminDeleteCustomer,
+  type CustomerListApiResponse,
+} from "@/services/adminCustomersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 import {
@@ -67,13 +70,7 @@ const planColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
   Premium: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
-  null: "bg-muted/20 text-muted-foreground",
-};
-
-const customerInviteStatusBadge: Record<string, string> = {
-  pending: "bg-qiko-warning/15 text-qiko-warning border-qiko-warning/30",
-  accepted: "bg-qiko-success/15 text-qiko-success border-qiko-success/30",
-  revoked: "bg-muted/40 text-muted-foreground border-border/30",
+  "N/A": "bg-muted/20 text-muted-foreground",
 };
 
 type SortKey =
@@ -87,7 +84,7 @@ type SortKey =
 
 type SortDir = "asc" | "desc";
 
-type DisplayPlan = "Basic" | "Premium" | "Enterprise" | "null";
+type DisplayPlan = "Basic" | "Premium" | "Enterprise" | "N/A";
 type DisplayStatus = string;
 
 interface CustomerRow {
@@ -158,24 +155,43 @@ function extractCustomerArray(payload: CustomerListApiResponse): unknown[] {
 }
 
 function getDisplayPlan(plan: unknown): DisplayPlan {
-  if (plan === null) return "null";
+  if (plan === null || plan === undefined) return "N/A";
   if (typeof plan !== "string") return "Basic";
-  const normalized = plan.toLowerCase();
+  const trimmed = plan.trim();
+  const normalized = trimmed.toLowerCase();
+  if (normalized === "" || normalized === "null") return "N/A";
   if (normalized.includes("enterprise")) return "Enterprise";
   if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Premium";
   return "Basic";
 }
 
 function getDisplayStatus(status: unknown): DisplayStatus {
-  if (typeof status !== "string" || status.trim().length === 0) return "null";
-  return status;
+  if (typeof status !== "string" || status.trim().length === 0) return "N/A";
+  const t = status.trim();
+  if (t.toLowerCase() === "null") return "N/A";
+  return t;
 }
 
 function getStatusBadgeClass(status: string): string {
   const normalized = status.toLowerCase();
+  if (normalized === "n/a" || normalized === "null") return "bg-muted/20 text-muted-foreground border-border/40";
   if (normalized === "active") return statusColors.Active;
   if (normalized === "non-active" || normalized === "inactive") return statusColors["Non-active"];
   return "bg-muted/20 text-muted-foreground border-border/40";
+}
+
+/** Subscription column label: capitalize first letter (e.g. active → Active); keep N/A as-is. */
+function formatSubscriptionDisplay(value: string): string {
+  const t = value.trim();
+  if (t.toUpperCase() === "N/A") return "N/A";
+  if (!t) return "N/A";
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+/** Sort footer label: status column is titled "Subscription" in the table. */
+function customerSortColumnLabel(key: SortKey): string {
+  if (key === "status") return "subscription";
+  return key.replace(/([A-Z])/g, " $1").toLowerCase();
 }
 
 function normalizeCustomer(item: unknown): CustomerRow {
@@ -192,7 +208,7 @@ function normalizeCustomer(item: unknown): CustomerRow {
     name,
     slug,
     plan: isNullPlan
-      ? "null"
+      ? "N/A"
       : getDisplayPlan(row.subscription_plan_name ?? row.plan ?? row.subscription_plan ?? ""),
     status: getDisplayStatus(row.stripe_status ?? row.status ?? ""),
     workersCount: isNullPlan ? 0 : toNumber(row.agents_count ?? row.workers_count ?? row.workersCount),
@@ -221,10 +237,7 @@ export default function Customers() {
   const [inviteCustomerOpen, setInviteCustomerOpen] = useState(false);
   const [customerInviteName, setCustomerInviteName] = useState("");
   const [customerInviteEmail, setCustomerInviteEmail] = useState("");
-  /** UI-only — replace with API-driven list when backend exists */
-  const [customerInvitesUi] = useState<
-    Array<{ id: string; name: string; email: string; status: string; invitedAt: string }>
-  >([]);
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [customersApi, setCustomersApi] = useState<CustomerRow[]>([]);
@@ -286,11 +299,6 @@ export default function Customers() {
     active: activeStripeStatusCount,
   }), [activeStripeStatusCount, totalCustomers]);
 
-  const pendingCustomerInvites = useMemo(
-    () => customerInvitesUi.filter((i) => String(i.status).toLowerCase() === "pending").length,
-    [customerInvitesUi]
-  );
-
   const filtered = useMemo(() => {
     const result = customersApi.filter((c) => {
       const q = search.toLowerCase();
@@ -344,7 +352,7 @@ export default function Customers() {
       "Name",
       "Email",
       "Plan",
-      "Status",
+      "Subscription",
       "Workers",
       "Conversations",
       "Total Earnings",
@@ -355,7 +363,7 @@ export default function Customers() {
       c.name,
       c.contactEmail,
       c.plan,
-      c.status,
+      formatSubscriptionDisplay(c.status),
       c.workersCount,
       c.conversationsTotal,
       c.totalEarnings,
@@ -380,9 +388,38 @@ export default function Customers() {
     toast.success(`Exported ${filtered.length} customers.`);
   }
 
-  function handleCustomerInviteSubmit(e: FormEvent) {
+  async function handleCustomerInviteSubmit(e: FormEvent) {
     e.preventDefault();
-    // UI only — wire API when backend is ready
+    const user_name = customerInviteName.trim();
+    const email = customerInviteEmail.trim();
+    if (!user_name || !email) {
+      toast.error("Please enter full name and email.");
+      return;
+    }
+    setInviteSubmitting(true);
+    try {
+      const res = await adminCustomerSendInvite({ user_name, email });
+      toast.success(typeof res.message === "string" && res.message.length > 0 ? res.message : "Invite sent.");
+      setCustomerInviteName("");
+      setCustomerInviteEmail("");
+      await fetchCustomers();
+    } catch (err: unknown) {
+      const ax = err as {
+        response?: { data?: { message?: string; errors?: Record<string, string[]> } };
+      };
+      const data = ax?.response?.data;
+      const msg = data?.message;
+      const firstFieldError = data?.errors ? Object.values(data.errors).flat()[0] : undefined;
+      toast.error(
+        typeof msg === "string" && msg.length > 0
+          ? msg
+          : typeof firstFieldError === "string"
+            ? firstFieldError
+            : "Failed to send invite."
+      );
+    } finally {
+      setInviteSubmitting(false);
+    }
   }
 
   async function confirmDeleteCustomer() {
@@ -453,6 +490,7 @@ export default function Customers() {
                   onChange={(e) => setCustomerInviteName(e.target.value)}
                   autoComplete="name"
                   required
+                  disabled={inviteSubmitting}
                 />
               </div>
               <div className="space-y-1.5 md:col-span-2">
@@ -465,12 +503,13 @@ export default function Customers() {
                   onChange={(e) => setCustomerInviteEmail(e.target.value)}
                   autoComplete="email"
                   required
+                  disabled={inviteSubmitting}
                 />
               </div>
               <div className="md:col-span-3 flex items-center justify-end">
-                <Button type="submit" className="gap-1.5">
+                <Button type="submit" className="gap-1.5" disabled={inviteSubmitting}>
                   <MailPlus className="size-3.5" />
-                  Send Invite
+                  {inviteSubmitting ? "Sending…" : "Send Invite"}
                 </Button>
               </div>
             </form>
@@ -478,13 +517,7 @@ export default function Customers() {
         </Card>
       )}
 
-      <Tabs defaultValue="customers" className="space-y-4">
-        <TabsList className="bg-secondary/40">
-          <TabsTrigger value="customers">Customers ({totalCustomers})</TabsTrigger>
-          <TabsTrigger value="invites">Invites ({customerInvitesUi.length})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="customers" className="space-y-6 mt-0 outline-none">
+      <div className="space-y-6">
       {isLoading ? (
         <CustomersKpiSkeleton />
       ) : (
@@ -538,7 +571,7 @@ export default function Customers() {
                     <SortableHead col="name" label="Customer" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="name" />} />
                     <TableHead className="text-xs font-medium text-muted-foreground">Email</TableHead>
                     <SortableHead col="plan" label="Plan" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="plan" />} />
-                    <SortableHead col="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="status" />} />
+                    <SortableHead col="status" label="Subscription" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="status" />} />
                     <SortableHead col="workersCount" label="Workers" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="workersCount" />} align="right" />
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
@@ -561,14 +594,14 @@ export default function Customers() {
                       <TableCell className="text-xs text-muted-foreground">{c.contactEmail || "—"}</TableCell>
 
                       <TableCell>
-                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan]}`}>
+                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan] ?? planColors["N/A"]}`}>
                           {c.plan}
                         </Badge>
                       </TableCell>
 
                       <TableCell>
                         <Badge variant="outline" className={`text-[10px] ${getStatusBadgeClass(c.status)}`}>
-                          {c.status}
+                          {formatSubscriptionDisplay(c.status)}
                         </Badge>
                       </TableCell>
 
@@ -628,7 +661,7 @@ export default function Customers() {
       </motion.div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Showing page {page} of {totalPages} · Sorted by {sortKey.replace(/([A-Z])/g, " $1").toLowerCase()} ({sortDir})</span>
+        <span>Showing page {page} of {totalPages} · Sorted by {customerSortColumnLabel(sortKey)} ({sortDir})</span>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -654,44 +687,7 @@ export default function Customers() {
           <span className="ml-2">Click any row to view customer details</span>
         </div>
       </div>
-        </TabsContent>
-
-        <TabsContent value="invites" className="space-y-4 mt-0 outline-none">
-          <Card className="bg-card/80 border-border/40">
-            <CardHeader>
-              <CardTitle className="text-base">Invitation History</CardTitle>
-              <CardDescription>{pendingCustomerInvites} pending invitations</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {customerInvitesUi.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-sm text-muted-foreground">
-                  No customer invitations sent yet.
-                </div>
-              )}
-              {customerInvitesUi.map((invite) => (
-                <div key={invite.id} className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{invite.name || invite.email}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {invite.email}
-                        {invite.invitedAt ? ` • ${formatDate(invite.invitedAt)}` : ""}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={customerInviteStatusBadge[String(invite.status).toLowerCase()] ?? customerInviteStatusBadge.pending}
-                    >
-                      <UserRound className="size-3 mr-1" />
-                      {invite.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      </div>
 
       <AlertDialog
         open={deleteTarget !== null}

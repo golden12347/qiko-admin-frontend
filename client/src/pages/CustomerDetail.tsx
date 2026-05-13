@@ -76,6 +76,12 @@ const workerStatusColors: Record<string, string> = {
 };
 
 const normalizeWorkerStatus = (status: string) => (status === "live" ? "live" : "training");
+
+function formatWorkerStatusDisplay(status: string): string {
+  const s = normalizeWorkerStatus(status);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 const normalizeCustomerStatus = (status: string) => {
   const normalized = status.trim().toLowerCase();
   return normalized === "active" ? "Active" : "Non-active";
@@ -98,7 +104,12 @@ const workerTypeColors: Record<string, string> = {
 };
 
 function formatWorkerTypeLabel(value: string): string {
-  return value.replace(/_/g, " ");
+  const s = value.replace(/_/g, " ").trim();
+  if (!s) return "—";
+  return s
+    .split(/\s+/)
+    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .join(" ");
 }
 
 function parseIsStudio(value: unknown): boolean {
@@ -370,20 +381,20 @@ export default function CustomerDetail() {
                         htmlFor="customer-studio-toggle"
                         className="text-sm text-muted-foreground cursor-pointer whitespace-nowrap"
                       >
-                        studio
+                        Enable Studio
                       </Label>
                       <Switch
                         id="customer-studio-toggle"
                         checked={isStudio}
                         onCheckedChange={handleStudioChange}
                         disabled={studioSaving}
-                        aria-label="studio"
+                        aria-label="Enable Studio"
                         className="shrink-0"
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-2 mt-4">
-                    <InfoItem icon={<Mail className="size-3.5" />} label="Contact" value={displayContact} />
+                  <div className="mt-4 flex flex-col gap-2 [&>*]:min-w-0">
+                    <InfoItem icon={<Mail className="size-3.5" />} label="Contact" value={displayContact} fullValue />
                     <InfoItem icon={<Calendar className="size-3.5" />} label="Joined" value={formatDate(displayJoined)} />
                   </div>
                 </div>
@@ -457,7 +468,7 @@ export default function CustomerDetail() {
                           variant="outline"
                           className={`text-[10px] ${workerStatusColors[normalizeWorkerStatus(w.status)]}`}
                         >
-                          {normalizeWorkerStatus(w.status)}
+                          {formatWorkerStatusDisplay(w.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-sm">{fmt(w.conversationsTotal)}</TableCell>
@@ -534,12 +545,32 @@ export default function CustomerDetail() {
 
 /* ── Sub-components ────────────────────────────────────────── */
 
-function InfoItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoItem({
+  icon,
+  label,
+  value,
+  fullValue = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  fullValue?: boolean;
+}) {
+  if (fullValue) {
+    return (
+      <div className="flex max-w-full min-w-0 items-center gap-1.5 overflow-x-auto text-sm [scrollbar-width:thin]">
+        <span className="text-muted-foreground/60 shrink-0">{icon}</span>
+        <span className="text-muted-foreground text-xs shrink-0 whitespace-nowrap">{label}:</span>
+        <span className="font-medium text-xs whitespace-nowrap shrink-0">{value}</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-1.5 text-sm">
+    <div className="flex items-center gap-1.5 text-sm min-w-0">
       <span className="text-muted-foreground/60">{icon}</span>
       <span className="text-muted-foreground text-xs">{label}:</span>
-      <span className="font-medium text-xs truncate">{value}</span>
+      <span className="font-medium text-xs truncate min-w-0">{value}</span>
     </div>
   );
 }
