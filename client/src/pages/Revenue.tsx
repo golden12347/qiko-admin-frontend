@@ -126,6 +126,12 @@ export default function Revenue() {
     ];
   }, [planDistributionApi]);
 
+  // Basic + Enterprise plan tiles hidden in UI; only Premium row is shown (see planDistributionVisibleRows).
+  const planDistributionVisibleRows = useMemo(
+    () => normalizedPlanDistribution.filter((p) => p.plan !== "Basic" && p.plan !== "Enterprise"),
+    [normalizedPlanDistribution]
+  );
+
   const kpis = [
     {
       label: "Total Revenue",
@@ -591,10 +597,14 @@ export default function Revenue() {
             <CardTitle className="text-sm font-medium">Plan Distribution</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {normalizedPlanDistribution.map((plan) => {
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/*
+                Basic & Enterprise plan tiles — hidden. Restore: use normalizedPlanDistribution.map below
+                and remove planDistributionVisibleRows useMemo.
+              */}
+              {planDistributionVisibleRows.map((plan) => {
                 const totalCust = normalizedPlanDistribution.reduce((s, p) => s + p.customers, 0);
-                const pct = ((plan.customers / totalCust) * 100).toFixed(0);
+                const pct = totalCust > 0 ? ((plan.customers / totalCust) * 100).toFixed(0) : "0";
                 return (
                   <div key={plan.plan} className="rounded-lg border border-border/30 p-4 bg-secondary/10">
                     <div className="flex items-center justify-between mb-2">
@@ -605,7 +615,8 @@ export default function Revenue() {
                     </div>
                     <p className="text-xl font-bold font-heading tabular-nums">{plan.customers}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">customers</p>
-                    <div className="flex items-center justify-end mt-2 pt-2 border-t border-border/20">
+                    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/20">
+                      <span className="text-[10px] text-muted-foreground">Total Revenue</span>
                       <span className="text-xs font-medium tabular-nums text-qiko-success">${plan.mrr.toLocaleString()}</span>
                     </div>
                   </div>
