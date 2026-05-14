@@ -68,7 +68,7 @@ const statusColors: Record<string, string> = {
 
 const planColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
-  Premium: "bg-qiko-indigo/10 text-qiko-indigo",
+  Standard: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
   "N/A": "bg-muted/20 text-muted-foreground",
 };
@@ -84,7 +84,7 @@ type SortKey =
 
 type SortDir = "asc" | "desc";
 
-type DisplayPlan = "Basic" | "Premium" | "Enterprise" | "N/A";
+type DisplayPlan = "Basic" | "Standard" | "Enterprise" | "N/A";
 type DisplayStatus = string;
 
 interface CustomerRow {
@@ -161,7 +161,7 @@ function getDisplayPlan(plan: unknown): DisplayPlan {
   const normalized = trimmed.toLowerCase();
   if (normalized === "" || normalized === "null") return "N/A";
   if (normalized.includes("enterprise")) return "Enterprise";
-  if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Premium";
+  if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Standard";
   return "Basic";
 }
 

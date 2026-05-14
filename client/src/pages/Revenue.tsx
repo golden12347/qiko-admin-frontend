@@ -38,7 +38,7 @@ type CustomerSortKey = "name" | "plan" | "totalRevenue" | "lastBilling";
 
 const planBadgeColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
-  Premium: "bg-qiko-indigo/10 text-qiko-indigo",
+  Standard: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
 };
 
@@ -66,6 +66,16 @@ function formatBillingDate(value: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+/** Align with Customers list: Premium / business / growth tier → Standard label. */
+function displayRevenuePlanName(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  const n = s.toLowerCase();
+  if (!n || n === "null" || n === "—") return s.length > 0 ? s : "—";
+  if (n.includes("enterprise")) return "Enterprise";
+  if (n.includes("premium") || n.includes("business") || n.includes("growth")) return "Standard";
+  return s;
 }
 
 export default function Revenue() {
@@ -96,7 +106,7 @@ export default function Revenue() {
     Array<{ name: string; amount: number }>
   >([]);
   const [planDistributionApi, setPlanDistributionApi] = useState<
-    Array<{ plan: "Basic" | "Premium" | "Enterprise"; customers: number; mrr: number }>
+    Array<{ plan: "Basic" | "Standard" | "Enterprise"; customers: number; mrr: number }>
   >([]);
   const [revenueLoading, setRevenueLoading] = useState(true);
 
@@ -121,12 +131,12 @@ export default function Revenue() {
     if (planDistributionApi.length > 0) return planDistributionApi;
     return [
       { plan: "Basic", customers: 0, mrr: 0 },
-      { plan: "Premium", customers: 0, mrr: 0 },
+      { plan: "Standard", customers: 0, mrr: 0 },
       { plan: "Enterprise", customers: 0, mrr: 0 },
     ];
   }, [planDistributionApi]);
 
-  // Basic + Enterprise plan tiles hidden in UI; only Premium row is shown (see planDistributionVisibleRows).
+  // Basic + Enterprise plan tiles hidden in UI; only Standard (premium tier) row is shown.
   const planDistributionVisibleRows = useMemo(
     () => normalizedPlanDistribution.filter((p) => p.plan !== "Basic" && p.plan !== "Enterprise"),
     [normalizedPlanDistribution]
@@ -297,7 +307,7 @@ export default function Revenue() {
             return {
               id: rowId,
               name: String(item.user_name ?? "—"),
-              plan: String(
+              plan: displayRevenuePlanName(
                 firstPlan.plan_name ??
                 firstPlan.subscription_plan_name ??
                 item.plan_name ??
@@ -335,7 +345,7 @@ export default function Revenue() {
               mrr: toNumber(planDistribution.basic_total_amount),
             },
             {
-              plan: "Premium",
+              plan: "Standard",
               customers: toNumber(planDistribution.premium),
               mrr: toNumber(planDistribution.premium_total_amount),
             },

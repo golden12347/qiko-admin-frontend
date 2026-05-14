@@ -25,7 +25,7 @@ import {
   LayoutDashboard,
   Users,
   Bot,
-  MessageSquare,
+  // MessageSquare, // hidden with Conversations tab
   DollarSign,
   ChevronRight,
   CalendarRange,
@@ -38,7 +38,7 @@ const mainNavItems = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Workers", href: "/workers", icon: Bot },
-  { label: "Conversations", href: "/conversations", icon: MessageSquare },
+  // { label: "Conversations", href: "/conversations", icon: MessageSquare },
   { label: "Revenue", href: "/revenue", icon: DollarSign },
   { label: "Admin Users", href: "/admin-users", icon: Users },
 ];
@@ -194,7 +194,7 @@ function Breadcrumb({ location }: { location: string }) {
   const labelMap: Record<string, string> = {
     customers: "Customers",
     workers: "Workers",
-    conversations: "Conversations",
+    // conversations: "Conversations",
     revenue: "Revenue",
     activity: "Activity Logs",
   };
