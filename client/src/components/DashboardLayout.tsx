@@ -36,10 +36,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const mainNavItems = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
+  { label: "Revenue", href: "/revenue", icon: DollarSign },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Workers", href: "/workers", icon: Bot },
   // { label: "Conversations", href: "/conversations", icon: MessageSquare },
-  { label: "Revenue", href: "/revenue", icon: DollarSign },
   { label: "Admin Users", href: "/admin-users", icon: Users },
 ];
 
