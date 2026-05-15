@@ -50,13 +50,22 @@ function slugify(value: string): string {
 }
 
 function formatStartedAt(value: string): string {
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value || "—";
+  const date = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value.trim() || "—";
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+}
+
+function firstNonEmpty(...values: unknown[]): string {
+  for (const v of values) {
+    if (v == null) continue;
+    const s = typeof v === "string" ? v.trim() : String(v).trim();
+    if (s.length > 0) return s;
+  }
+  return "—";
 }
 
 function extractConversationArray(payload: ConversationListApiResponse): unknown[] {
@@ -76,36 +85,40 @@ function extractConversationArray(payload: ConversationListApiResponse): unknown
 function normalizeConversation(item: unknown): ConversationRow {
   const row = (item ?? {}) as Record<string, unknown>;
   const members = Array.isArray(row.members) ? (row.members as Record<string, unknown>[]) : [];
-  const adminMember = members.find((m) => String(m.role ?? "").toLowerCase() === "admin");
-  const nonAdminMember = members.find((m) => String(m.role ?? "").toLowerCase() !== "admin");
+  const adminMember = members.find((m) => String(m.role ?? "").trim().toLowerCase() === "admin");
+  const nonAdminMember = members.find((m) => String(m.role ?? "").trim().toLowerCase() !== "admin");
+  const memberVisitor = members.find((m) => String(m.role ?? "").trim().toLowerCase() === "member");
 
-  // Requirement: role=admin -> Worker uses agent_name
-  const workerName = String(
-    adminMember?.agent_name ??
-    row.agent_name ??
-    row.worker_name ??
-    row.workerName ??
-    "—"
+  // /conversation-list flat payload (preferred)
+  const customerName = firstNonEmpty(
+    row.customer_name,
+    row.customerName,
+    nonAdminMember?.user_name,
+    adminMember?.user_name,
+    row.created_by_user_name
   );
 
-  // Keep Customer column based on user_name
-  const customerName = String(
-    nonAdminMember?.user_name ??
-    adminMember?.user_name ??
-    row.user_name ??
-    row.customer_name ??
-    row.customerName ??
-    row.created_by_user_name ??
-    "—"
+  const workerName = firstNonEmpty(
+    row.worker_name,
+    row.workerName,
+    adminMember?.agent_name,
+    row.agent_name
   );
 
-  // Requirement: non-admin member -> User / Visitor uses agent_name
-  const userName = String(
-    nonAdminMember?.agent_name ??
-    row.user_name ??
-    row.userName ??
-    row.visitor_name ??
-    "—"
+  const userName = firstNonEmpty(
+    row.user_visitor_name,
+    row.userVisitorName,
+    memberVisitor?.user_name,
+    nonAdminMember?.user_name
+  );
+
+  const startedAt = firstNonEmpty(
+    row.conversation_created_at,
+    row.conversationCreatedAt,
+    adminMember?.joined_at,
+    nonAdminMember?.joined_at,
+    row.started_at,
+    row.created_at
   );
 
   const rawId = String(row.id ?? row.conversation_id ?? slugify(`${workerName}-${customerName}`));
@@ -116,16 +129,7 @@ function normalizeConversation(item: unknown): ConversationRow {
     customerName,
     userName,
     channel: String(row.channel ?? "Web"),
-    startedAt: String(
-      adminMember?.joined_at ??
-      nonAdminMember?.joined_at ??
-      row.joined_at ??
-      row.started_at ??
-      row.conversation_created_at ??
-      row.created_at ??
-      row.timestamp ??
-      "—"
-    ),
+    startedAt,
   };
 }
 

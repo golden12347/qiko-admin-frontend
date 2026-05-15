@@ -14,11 +14,11 @@ import { lazy, Suspense, useEffect } from "react";
 const Overview = lazy(() => import("./pages/Overview"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Workers = lazy(() => import("./pages/Workers"));
-const Conversations = lazy(() => import("./pages/Conversations"));
+// const Conversations = lazy(() => import("./pages/Conversations"));
 const Revenue = lazy(() => import("./pages/Revenue"));
 const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
 const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
-const ConversationDetail = lazy(() => import("./pages/ConversationDetail"));
+// const ConversationDetail = lazy(() => import("./pages/ConversationDetail"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
@@ -85,9 +85,10 @@ function PrivateRoutes() {
           <Route path="/customers" component={Customers} />
           <Route path="/customers/:slug" component={CustomerDetail} />
           <Route path="/workers" component={Workers} />
-          <Route path="/conversations" component={Conversations} />
-          <Route path="/conversations/:id" component={ConversationDetail} />
-          <Route path="/conversation-detail" component={ConversationDetail} />
+          {/* Conversations list + detail — hidden (restore lazy imports + routes to show again) */}
+          {/* <Route path="/conversations" component={Conversations} /> */}
+          {/* <Route path="/conversations/:id" component={ConversationDetail} /> */}
+          {/* <Route path="/conversation-detail" component={ConversationDetail} /> */}
           <Route path="/revenue" component={Revenue} />
           <Route path="/activity" component={ActivityLogs} />
           <Route path="/admin-users" component={AdminUsers} />

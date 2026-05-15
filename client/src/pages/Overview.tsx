@@ -77,6 +77,16 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+/** Subscription plan label for overview (matches Customers: Premium tier → Standard). */
+function displayOverviewPlanName(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  const n = s.toLowerCase();
+  if (!n || n === "null") return s.length > 0 ? s : "No plan";
+  if (n.includes("enterprise")) return "Enterprise";
+  if (n.includes("premium") || n.includes("business") || n.includes("growth")) return "Standard";
+  return s;
+}
+
 /* ── derived KPIs ──────────────────────────────────────────── */
 const paidSubscribers = customers.filter(c => c.status === "Active" && c.mrr > 0).length;
 const monthlyEarnings = customers.reduce((sum, c) => sum + c.mrr, 0);
@@ -285,7 +295,7 @@ export default function Overview() {
             ? response.customer_conversations_users.map((item) => ({
                 name: String(item.user_name ?? "—"),
                 conversations: Number(item.total_conversations ?? 0),
-                subscriptionPlanName: String(item.subscription_plan_name ?? "No plan"),
+                subscriptionPlanName: displayOverviewPlanName(item.subscription_plan_name ?? "No plan"),
               }))
             : []
         );
@@ -313,7 +323,7 @@ export default function Overview() {
             ? response.top_customers_earnings.map((item) => ({
                 name: String(item.user_name ?? "—"),
                 workers: toNumber(item.agents_count),
-                plan: String(item.subscription_plan_name ?? "—"),
+                plan: displayOverviewPlanName(item.subscription_plan_name ?? "—"),
                 earnings: toNumber(item.total_earnings),
               }))
             : []

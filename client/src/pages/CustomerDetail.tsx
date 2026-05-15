@@ -65,7 +65,7 @@ const statusColors: Record<string, string> = {
 
 const planColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
-  Premium: "bg-qiko-cyan/10 text-qiko-cyan",
+  Standard: "bg-qiko-cyan/10 text-qiko-cyan",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
   "No plan": "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
 };
@@ -89,8 +89,8 @@ const normalizeCustomerStatus = (status: string) => {
 const normalizeCustomerPlan = (plan: string) => {
   const normalized = plan.trim().toLowerCase();
   if (!normalized || normalized === "null") return "No plan";
-  if (normalized === "enterprise") return "Enterprise";
-  if (normalized === "business" || normalized === "growth" || normalized === "premium") return "Premium";
+  if (normalized.includes("enterprise")) return "Enterprise";
+  if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Standard";
   return "Basic";
 };
 
