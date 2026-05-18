@@ -88,6 +88,23 @@ export function WorkersStatsSkeleton() {
   );
 }
 
+export function WorkersTypeChartSkeleton() {
+  return (
+    <Card className="bg-card/80 border-border/40 overflow-hidden">
+      <CardContent className="p-6">
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-8 max-w-3xl mx-auto w-full">
+          <Skeleton className="h-[280px] w-[280px] max-h-[280px] max-w-[280px] rounded-full shrink-0" />
+          <div className="w-full lg:flex-1 lg:max-w-[300px] rounded-xl border border-border/30 bg-secondary/15 p-3 space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full rounded-lg" />
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function WorkersSearchRowSkeleton() {
   return (
     <div className="flex flex-wrap items-center gap-3">
