@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { adminForgotPassword, adminLogin, adminLogout } from "@/services/adminAuthApi";
-import { adminSendInvite } from "@/services/adminUsersApi";
+import { adminSendInvite, type AdminInviteRole } from "@/services/adminUsersApi";
+import { isSuperAdminRole } from "@/lib/authRoles";
 import { setCredentials, clearAuth, type AdminUser } from "@/store/slices/authSlice";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
@@ -45,6 +46,7 @@ interface SignupPayload {
 interface InvitePayload {
   name: string;
   email: string;
+  role: AdminInviteRole;
 }
 
 interface AuthContextType {
@@ -176,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               id: data.admin.id,
               name: data.admin.name,
               email: data.admin.email,
+              role_name: data.admin.role_name,
             },
           })
         );
@@ -262,9 +265,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [dispatch, token]);
 
   const sendInvite = useCallback<AuthContextType["sendInvite"]>(
-    async ({ name, email }) => {
+    async ({ name, email, role }) => {
     if (!currentUser) {
       return { ok: false, message: "You must be logged in to invite users." };
+    }
+    if (!isSuperAdminRole(admin?.role_name)) {
+      return { ok: false, message: "Only Super Admin can invite panel users." };
     }
     const normalizedEmail = normalizeEmail(email);
 
@@ -272,11 +278,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const invitePayload = {
         name: name.trim(),
         email: email.trim(),
+        role,
       };
-      await adminSendInvite({
-        name: invitePayload.name,
-        email: invitePayload.email,
-      });
+      await adminSendInvite(invitePayload);
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { message?: string } } };
       const message = ax?.response?.data?.message;
@@ -301,7 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       persistInvites([newInvite, ...invites]);
       return { ok: true, message: "Invite sent successfully." };
     },
-    [currentUser, invites]
+    [admin?.role_name, currentUser, invites]
   );
 
   const resendInvite = useCallback<AuthContextType["resendInvite"]>(

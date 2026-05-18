@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation, useSearch } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -25,14 +25,21 @@ import {
   Globe,
   Phone,
   Download,
+  PieChart as PieChartIcon,
 } from "lucide-react";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
-import { adminWorkerList, type WorkerListApiResponse } from "@/services/adminWorkersApi";
+import {
+  adminWorkerList,
+  type WorkerIndustryStat,
+  type WorkerListApiResponse,
+} from "@/services/adminWorkersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import {
   WorkersSearchRowSkeleton,
   WorkersStatsSkeleton,
   WorkersTableSkeletonBody,
+  WorkersTypeChartSkeleton,
 } from "@/components/tabPageSkeletons";
 
 const fadeUp = {
@@ -54,6 +61,55 @@ const typeStyles: Record<string, string> = {
   onboarding: "bg-violet-400/10 text-violet-400",
   retention: "bg-rose-400/10 text-rose-400",
 };
+
+/** Donut segment colors (blue → purple → pink → orange, like reference chart). */
+const WORKER_TYPE_CHART_COLORS = [
+  "#312e81",
+  "#4338ca",
+  "#6366f1",
+  "#818cf8",
+  "#a78bfa",
+  "#c084fc",
+  "#e879f9",
+  "#f472b6",
+  "#fb7185",
+  "#fb923c",
+  "#f97316",
+];
+
+function WorkerTypeChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; payload?: WorkerTypeChartSlice }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  const name = String(item.payload?.name ?? item.name ?? "");
+  const value = Number(item.value ?? 0);
+  return (
+    <div
+      className="rounded-lg border border-qiko-indigo/20 px-3 py-2 text-xs shadow-lg"
+      style={{ background: "rgba(15,20,35,0.96)", color: "#e2e8f0" }}
+    >
+      <span className="text-foreground/90">
+        {name}: <span className="font-medium text-foreground">{value}</span>
+        {value === 1 ? " worker" : " workers"}
+        {item.payload?.percent ? (
+          <span className="block mt-1 text-muted-foreground tabular-nums">{item.payload.percent} of chart</span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+interface WorkerTypeChartSlice {
+  name: string;
+  value: number;
+  percent: string;
+  fill: string;
+}
 
 type WorkerChannel = "web" | "voice";
 
@@ -175,6 +231,43 @@ function formatCreatedAt(value: string): string {
   });
 }
 
+function extractIndustries(payload: WorkerListApiResponse): WorkerIndustryStat[] {
+  if (Array.isArray(payload?.industries)) return payload.industries;
+  const nested = payload?.data as Record<string, unknown> | undefined;
+  if (nested && Array.isArray(nested.industries)) {
+    return nested.industries as WorkerIndustryStat[];
+  }
+  return [];
+}
+
+function formatIndustryPercent(value: number, total: number): string {
+  if (total <= 0) return "0%";
+  const pct = (value / total) * 100;
+  if (pct > 0 && pct < 1) return "<1%";
+  if (Math.abs(pct - Math.round(pct)) < 0.05) return `${Math.round(pct)}%`;
+  return `${pct.toFixed(1)}%`;
+}
+
+function buildIndustriesChart(items: WorkerIndustryStat[]): WorkerTypeChartSlice[] {
+  const slices = items
+    .map((row) => {
+      const industry = String(row.industry ?? "").trim();
+      const name = industry ? formatTypeLabel(industry) : "Unspecified";
+      const value = toNumber(row.workers_count);
+      return { name, value };
+    })
+    .filter((slice) => slice.value > 0 || slice.name !== "Unspecified")
+    .sort((a, b) => b.value - a.value);
+
+  const totalWorkers = slices.reduce((sum, slice) => sum + slice.value, 0);
+
+  return slices.map((slice, index) => ({
+    ...slice,
+    percent: formatIndustryPercent(slice.value, totalWorkers),
+    fill: WORKER_TYPE_CHART_COLORS[index % WORKER_TYPE_CHART_COLORS.length],
+  }));
+}
+
 function readSearchQueryParam(): string {
   if (typeof window === "undefined") return "";
   return new URLSearchParams(window.location.search).get("search") ?? "";
@@ -198,6 +291,7 @@ export default function Workers() {
   const [totalLive, setTotalLive] = useState(0);
   const [totalTraining, setTotalTraining] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [industriesChart, setIndustriesChart] = useState<WorkerTypeChartSlice[]>([]);
 
   const fetchWorkers = useCallback(async () => {
     setIsLoading(true);
@@ -236,9 +330,11 @@ export default function Workers() {
       setTotalLive(live);
       setTotalTraining(training);
       setTotalPages(Math.max(1, pages));
+      setIndustriesChart(buildIndustriesChart(extractIndustries(data)));
     } catch {
       toast.error("Failed to fetch workers list.");
       setWorkersApi([]);
+      setIndustriesChart([]);
       setTotalWorkers(0);
       setTotalLive(0);
       setTotalTraining(0);
@@ -300,6 +396,11 @@ export default function Workers() {
     live: totalLive,
     training: totalTraining,
   }), [totalLive, totalTraining, totalWorkers]);
+
+  const industriesChartTotal = useMemo(
+    () => industriesChart.reduce((sum, slice) => sum + slice.value, 0),
+    [industriesChart]
+  );
 
   function handleExportCsv() {
     if (filtered.length === 0) {
@@ -378,6 +479,95 @@ export default function Workers() {
           <StatCard icon={<Bot className="size-4" />} label="Total Workers" value={stats.total} color="text-foreground" />
           <StatCard icon={<Zap className="size-4" />} label="Live" value={stats.live} color="text-qiko-success" />
           <StatCard icon={<Bot className="size-4" />} label="Training" value={stats.training} color="text-qiko-cyan" />
+        </motion.div>
+      )}
+
+      {isLoading ? (
+        <WorkersTypeChartSkeleton />
+      ) : (
+        <motion.div variants={fadeUp} initial="hidden" animate="visible">
+          <Card className="bg-card/80 border-border/40 overflow-hidden">
+            <CardHeader className="pb-3 border-b border-border/20">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-qiko-indigo/10">
+                    <PieChartIcon className="size-3.5 text-qiko-indigo" />
+                  </span>
+                  Worker Industries
+                </CardTitle>
+                {industriesChart.length > 0 && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {industriesChartTotal.toLocaleString()} workers · 100%
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {industriesChart.length > 0 ? (
+                <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-10 max-w-3xl mx-auto w-full">
+                  <div className="relative h-[min(280px,70vw)] w-[min(280px,70vw)] max-h-[280px] max-w-[280px] shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={industriesChart}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius="52%"
+                          outerRadius="88%"
+                          paddingAngle={2}
+                          strokeWidth={2}
+                          stroke="hsl(var(--background))"
+                        >
+                          {industriesChart.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<WorkerTypeChartTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div
+                      className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"
+                      aria-hidden
+                    >
+                      <span className="text-2xl font-bold font-heading tabular-nums text-foreground">
+                        {industriesChartTotal.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mt-0.5">
+                        Workers
+                      </span>
+                    </div>
+                  </div>
+
+                  <ul className="w-full lg:flex-1 lg:max-w-[300px] flex flex-col gap-0.5 rounded-xl border border-border/30 bg-secondary/15 p-3">
+                    {industriesChart.map((item) => (
+                      <li
+                        key={item.name}
+                        className="flex items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-secondary/40 transition-colors"
+                        title={`${item.name}: ${item.value} workers · ${item.percent}`}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-background/80"
+                          style={{ backgroundColor: item.fill }}
+                        />
+                        <span className="flex-1 min-w-0 text-sm text-foreground/90 truncate">
+                          {item.name}
+                        </span>
+                        <span className="text-sm font-semibold tabular-nums text-foreground shrink-0">
+                          {item.percent}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
+                  No industry data available.
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </motion.div>
       )}
 

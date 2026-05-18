@@ -4,6 +4,7 @@ export interface AdminUser {
   id: number;
   name: string;
   email: string;
+  role_name?: string;
 }
 
 export interface AuthState {
@@ -25,7 +26,11 @@ function readPersistedAuth(): AuthState {
         typeof parsed.admin.id === "number" &&
         typeof parsed.admin.name === "string" &&
         typeof parsed.admin.email === "string"
-          ? parsed.admin
+          ? {
+              ...parsed.admin,
+              role_name:
+                typeof parsed.admin.role_name === "string" ? parsed.admin.role_name : undefined,
+            }
           : null,
     };
   } catch {

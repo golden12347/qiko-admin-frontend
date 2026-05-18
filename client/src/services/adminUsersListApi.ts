@@ -10,6 +10,7 @@ export interface AdminUserNameItem {
   id?: number | string;
   name?: string;
   email?: string;
+  role_name?: string;
   status?: boolean;
   invite_status?: string;
   created_at?: string;

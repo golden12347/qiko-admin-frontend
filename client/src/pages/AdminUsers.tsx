@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -17,13 +24,20 @@ import {
 import { MailPlus, RefreshCw, Trash2, UserRound, XCircle } from "lucide-react";
 import { AdminInvite, useAuth } from "@/contexts/AuthContext";
 import { adminUsersList, adminDeleteAdminUser, type AdminUserNameItem } from "@/services/adminUsersListApi";
+import {
+  ADMIN_INVITE_ROLE_OPTIONS,
+  type AdminInviteRole,
+} from "@/services/adminUsersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { toast } from "sonner";
 import { AdminInvitesListSkeleton, AdminUsersListSkeleton } from "@/components/tabPageSkeletons";
+import { useIsSuperAdmin } from "@/store/hooks";
 
 const roleBadge: Record<string, string> = {
   owner: "bg-amber-400/15 text-amber-400 border-amber-400/30",
+  super_admin: "bg-amber-400/15 text-amber-400 border-amber-400/30",
   admin: "bg-qiko-indigo/15 text-qiko-indigo border-qiko-indigo/30",
+  viewer: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/30",
   analyst: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/30",
 };
 
@@ -49,10 +63,20 @@ function formatDate(value?: string) {
   });
 }
 
+function normalizeRoleKey(role: string | undefined): string {
+  return (role ?? "admin").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
 function formatRoleLabel(role: string | undefined): string {
-  const r = (role ?? "admin").trim().toLowerCase();
-  if (!r) return "Admin";
-  return r.charAt(0).toUpperCase() + r.slice(1);
+  const r = normalizeRoleKey(role);
+  const labels: Record<string, string> = {
+    super_admin: "Super Admin",
+    admin: "Admin",
+    viewer: "Viewer",
+    owner: "Owner",
+    analyst: "Analyst",
+  };
+  return labels[r] ?? (role?.trim() || "Admin");
 }
 
 function inviteStatusBadgeKey(status: string | undefined): string {
@@ -72,9 +96,11 @@ function formatInviteStatusLabel(status: string | undefined): string {
 
 export default function AdminUsers() {
   const { users, invites, sendInvite, resendInvite, revokeInvite } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const { filter } = useGlobalDateFilter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<AdminInviteRole>("viewer");
   const [loading, setLoading] = useState(false);
   const [apiLoading, setApiLoading] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
@@ -113,7 +139,7 @@ export default function AdminUsers() {
           id: row.id != null && String(row.id).trim() !== "" ? String(row.id) : "",
           name: String(row.name ?? "—"),
           email: String(row.email ?? "—"),
-          role: "admin" as const,
+          role: String(row.role_name ?? "admin"),
         })),
     [apiRows]
   );
@@ -143,7 +169,7 @@ export default function AdminUsers() {
   async function handleInviteSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const result = await sendInvite({ name, email });
+    const result = await sendInvite({ name, email, role: inviteRole });
     setLoading(false);
 
     if (!result.ok) {
@@ -154,6 +180,7 @@ export default function AdminUsers() {
     toast.success(result.message);
     setName("");
     setEmail("");
+    setInviteRole("viewer");
     await fetchAdminUsers();
   }
 
@@ -176,10 +203,18 @@ export default function AdminUsers() {
   }
 
   function handleDeleteAdminUser(user: { id: string; name: string; email: string }) {
+    if (!isSuperAdmin) {
+      toast.error("Only Super Admin can delete admin users.");
+      return;
+    }
     setDeleteTarget(user);
   }
 
   async function confirmDeleteAdminUser() {
+    if (!isSuperAdmin) {
+      toast.error("Only Super Admin can delete admin users.");
+      return;
+    }
     if (!deleteTarget?.id) {
       toast.error("Missing user id; cannot delete.");
       return;
@@ -208,37 +243,56 @@ export default function AdminUsers() {
         </p>
       </div>
 
+      {isSuperAdmin && (
       <Card className="bg-card/80 border-border/40">
         <CardHeader>
           <CardTitle className="text-base">Invite User</CardTitle>
-          <CardDescription>Add full name and email to invite a user.</CardDescription>
+          <CardDescription>Add name, email, and role to invite a panel user.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleInviteSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <form onSubmit={handleInviteSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="invite-name">Full name</Label>
               <Input
                 id="invite-name"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Jane Doe"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
               />
             </div>
-            <div className="space-y-1.5 md:col-span-2">
+            <div className="space-y-1.5">
               <Label htmlFor="invite-email">Email address</Label>
               <Input
                 id="invite-email"
                 type="email"
-                placeholder="new-admin@company.com"
+                placeholder="jane@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
-            <div className="md:col-span-3 flex items-center justify-end">
-              <Button type="submit" disabled={loading} className="gap-1.5">
+            <div className="space-y-1.5">
+              <Label htmlFor="invite-role">Role</Label>
+              <Select
+                value={inviteRole}
+                onValueChange={(v) => setInviteRole(v as AdminInviteRole)}
+              >
+                <SelectTrigger id="invite-role" className="w-full bg-secondary/30 border-border/30">
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADMIN_INVITE_ROLE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end justify-end">
+              <Button type="submit" disabled={loading} className="gap-1.5 w-full md:w-auto">
                 <MailPlus className="size-3.5" />
                 {loading ? "Sending..." : "Send Invite"}
               </Button>
@@ -246,6 +300,7 @@ export default function AdminUsers() {
           </form>
         </CardContent>
       </Card>
+      )}
 
       <Tabs defaultValue="users" className="space-y-4">
         <TabsList className="bg-secondary/40">
@@ -267,10 +322,13 @@ export default function AdminUsers() {
                     <p className="text-xs text-muted-foreground">{user.email}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant="outline" className={roleBadge[String((user as { role?: string }).role ?? "admin").toLowerCase()]}>
+                    <Badge
+                      variant="outline"
+                      className={roleBadge[normalizeRoleKey((user as { role?: string }).role)]}
+                    >
                       {formatRoleLabel((user as { role?: string }).role)}
                     </Badge>
-                    {displayUsers.length > 1 && (
+                    {isSuperAdmin && displayUsers.length > 1 && (
                       <Button
                         type="button"
                         variant="ghost"

@@ -6,10 +6,17 @@ const workerListClient = new APIClient("/api/v1/admin/worker-list", {
   baseURL: BACKEND_BASE_URL,
 });
 
+export interface WorkerIndustryStat {
+  industry?: string;
+  workers_count?: number | string;
+  amount?: string | number;
+}
+
 export interface WorkerListApiResponse {
   data?: unknown[] | Record<string, unknown>;
   items?: unknown[];
   workers?: unknown[];
+  industries?: WorkerIndustryStat[];
   total_live?: number;
   total_training?: number;
   total?: number;
