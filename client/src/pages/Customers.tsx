@@ -49,6 +49,7 @@ import {
   type CustomerListApiResponse,
 } from "@/services/adminCustomersApi";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import { useIsSuperAdmin } from "@/store/hooks";
 import { toast } from "sonner";
 import {
   CustomersKpiSkeleton,
@@ -233,6 +234,7 @@ function readSearchQueryParam(): string {
 }
 
 export default function Customers() {
+  const isSuperAdmin = useIsSuperAdmin();
   const [, navigate] = useLocation();
   const rawSearch = useSearch();
   const searchFromUrl = useMemo(() => new URLSearchParams(rawSearch || "").get("search") ?? "", [rawSearch]);
@@ -434,6 +436,10 @@ export default function Customers() {
 
   async function handleCustomerInviteSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!isSuperAdmin) {
+      toast.error("Only Super Admin can invite customers.");
+      return;
+    }
     const user_name = customerInviteName.trim();
     const email = customerInviteEmail.trim();
     if (!user_name || !email) {
@@ -467,6 +473,10 @@ export default function Customers() {
   }
 
   async function confirmDeleteCustomer() {
+    if (!isSuperAdmin) {
+      toast.error("Only Super Admin can delete customers.");
+      return;
+    }
     if (!deleteTarget?.id) {
       toast.error("Missing customer id.");
       return;
@@ -496,6 +506,7 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {isSuperAdmin && (
           <Button
             variant={inviteCustomerOpen ? "secondary" : "default"}
             size="sm"
@@ -505,6 +516,7 @@ export default function Customers() {
             <MailPlus className="size-3.5" />
             Invite Customer
           </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -516,7 +528,7 @@ export default function Customers() {
         </div>
       </div>
 
-      {inviteCustomerOpen && (
+      {isSuperAdmin && inviteCustomerOpen && (
         <Card className="bg-card/80 border-border/40">
           <CardHeader>
             <CardTitle className="text-base">Invite Customer</CardTitle>
@@ -623,7 +635,11 @@ export default function Customers() {
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
                     <SortableHead col="joinedDate" label="Joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="joinedDate" />} />
-                    <TableHead className="text-xs font-medium text-muted-foreground text-right w-[88px]">Actions</TableHead>
+                    {isSuperAdmin && (
+                      <TableHead className="text-xs font-medium text-muted-foreground text-right w-[88px]">
+                        Actions
+                      </TableHead>
+                    )}
                     <TableHead className="text-xs font-medium text-muted-foreground w-8" />
                   </TableRow>
                 </TableHeader>
@@ -674,18 +690,20 @@ export default function Customers() {
                         {formatDate(c.joinedDate)}
                       </TableCell>
 
-                      <TableCell className="text-right w-[88px]" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => setDeleteTarget(c)}
-                        >
-                          <Trash2 className="size-3.5" />
-                          Delete
-                        </Button>
-                      </TableCell>
+                      {isSuperAdmin && (
+                        <TableCell className="text-right w-[88px]" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteTarget(c)}
+                          >
+                            <Trash2 className="size-3.5" />
+                            Delete
+                          </Button>
+                        </TableCell>
+                      )}
 
                       <TableCell className="w-8">
                         <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-qiko-indigo transition-colors" />
@@ -695,7 +713,7 @@ export default function Customers() {
 
                   {!isLoading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={isSuperAdmin ? 10 : 9} className="text-center py-12 text-muted-foreground">
                         No customers found for this page.
                       </TableCell>
                     </TableRow>
