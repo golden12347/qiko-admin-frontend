@@ -1,5 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { adminForgotPassword, adminLogin, adminLogout } from "@/services/adminAuthApi";
+import {
+  adminForgotPassword,
+  adminLogin,
+  adminLogout,
+  adminVerifyTwoFactorLogin,
+  adminVerifyTwoFactorSetup,
+  isCompleteLoginResponse,
+  parseAdminLoginResponse,
+  type AdminLoginCompleteResponse,
+} from "@/services/adminAuthApi";
+import { clearLoginFlow } from "@/lib/loginFlowStorage";
 import { adminSendInvite, type AdminInviteRole } from "@/services/adminUsersApi";
 import { isSuperAdminRole } from "@/lib/authRoles";
 import { setCredentials, clearAuth, type AdminUser } from "@/store/slices/authSlice";
@@ -37,6 +47,12 @@ interface LoginPayload {
   password: string;
 }
 
+export type LoginResult =
+  | { ok: true; step: "complete" }
+  | { ok: true; step: "setup"; tempToken: string; qr: string; message?: string }
+  | { ok: true; step: "2fa"; tempToken: string; message?: string }
+  | { ok: false; message?: string };
+
 interface SignupPayload {
   name: string;
   email: string;
@@ -57,7 +73,9 @@ interface AuthContextType {
   invites: AdminInvite[];
   token: string | null;
   admin: AdminUser | null;
-  login: (payload: LoginPayload) => Promise<{ ok: boolean; message?: string }>;
+  login: (payload: LoginPayload) => Promise<LoginResult>;
+  verifyTwoFactorSetup: (payload: { tempToken: string; code: string }) => Promise<{ ok: boolean; message?: string }>;
+  verifyTwoFactorLogin: (payload: { tempToken: string; code: string }) => Promise<{ ok: boolean; message?: string }>;
   signup: (payload: SignupPayload) => Promise<{ ok: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ ok: boolean; message: string }>;
   logout: () => Promise<void>;
@@ -167,32 +185,137 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEYS.invites, JSON.stringify(next));
   };
 
+  const persistAuthFromResponse = useCallback(
+    (data: AdminLoginCompleteResponse) => {
+      if (!isCompleteLoginResponse(data)) return false;
+      dispatch(
+        setCredentials({
+          token: data.token,
+          admin: {
+            id: data.admin.id,
+            name: data.admin.name,
+            email: data.admin.email,
+            role_name: data.admin.role_name,
+          },
+        })
+      );
+      return true;
+    },
+    [dispatch]
+  );
+
   const login = useCallback<AuthContextType["login"]>(
     async ({ email, password }) => {
+      dispatch(clearAuth());
+      clearLoginFlow();
       try {
-        const data = await adminLogin({ email: email.trim(), password });
-        dispatch(
-          setCredentials({
-            token: data.token,
-            admin: {
-              id: data.admin.id,
-              name: data.admin.name,
-              email: data.admin.email,
-              role_name: data.admin.role_name,
-            },
-          })
-        );
-        return { ok: true };
+        const raw = await adminLogin({ email: email.trim(), password });
+        const parsed = parseAdminLoginResponse(raw);
+
+        if (!parsed) {
+          return { ok: false, message: "Unexpected login response. Please try again." };
+        }
+
+        if (parsed.step === "setup") {
+          return {
+            ok: true,
+            step: "setup",
+            tempToken: parsed.tempToken,
+            qr: parsed.qr,
+            message: parsed.message,
+          };
+        }
+
+        if (parsed.step === "2fa") {
+          return {
+            ok: true,
+            step: "2fa",
+            tempToken: parsed.tempToken,
+            message: parsed.message,
+          };
+        }
+
+        if (!persistAuthFromResponse(parsed.data)) {
+          return { ok: false, message: "Unexpected login response. Please try again." };
+        }
+        return { ok: true, step: "complete" };
       } catch (err: unknown) {
-        const ax = err as { response?: { data?: { message?: string } } };
-        const message = ax?.response?.data?.message;
+        const ax = err as { response?: { data?: unknown; status?: number } };
+        const parsed = ax?.response?.data ? parseAdminLoginResponse(ax.response.data) : null;
+
+        if (parsed?.step === "setup") {
+          return {
+            ok: true,
+            step: "setup",
+            tempToken: parsed.tempToken,
+            qr: parsed.qr,
+            message: parsed.message,
+          };
+        }
+
+        if (parsed?.step === "2fa") {
+          return {
+            ok: true,
+            step: "2fa",
+            tempToken: parsed.tempToken,
+            message: parsed.message,
+          };
+        }
+
+        const message = (ax?.response?.data as { message?: string } | undefined)?.message;
         return {
           ok: false,
           message: typeof message === "string" ? message : "Invalid email or password.",
         };
       }
     },
-    [dispatch]
+    [dispatch, persistAuthFromResponse]
+  );
+
+  const verifyTwoFactorSetup = useCallback<AuthContextType["verifyTwoFactorSetup"]>(
+    async ({ tempToken, code }) => {
+      try {
+        const data = await adminVerifyTwoFactorSetup({
+          temp_token: tempToken,
+          code,
+        });
+        if (!persistAuthFromResponse(data)) {
+          return { ok: false, message: "Unable to complete login." };
+        }
+        return { ok: true };
+      } catch (err: unknown) {
+        const ax = err as { response?: { data?: { message?: string } } };
+        const message = ax?.response?.data?.message;
+        return {
+          ok: false,
+          message: typeof message === "string" ? message : "Invalid verification code.",
+        };
+      }
+    },
+    [persistAuthFromResponse]
+  );
+
+  const verifyTwoFactorLogin = useCallback<AuthContextType["verifyTwoFactorLogin"]>(
+    async ({ tempToken, code }) => {
+      try {
+        const data = await adminVerifyTwoFactorLogin({
+          temp_token: tempToken,
+          code,
+        });
+        if (!persistAuthFromResponse(data)) {
+          return { ok: false, message: "Unable to complete login." };
+        }
+        return { ok: true };
+      } catch (err: unknown) {
+        const ax = err as { response?: { data?: { message?: string } } };
+        const message = ax?.response?.data?.message;
+        return {
+          ok: false,
+          message: typeof message === "string" ? message : "Invalid authentication code.",
+        };
+      }
+    },
+    [persistAuthFromResponse]
   );
 
   const signup = useCallback<AuthContextType["signup"]>(
@@ -353,6 +476,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       admin,
       login,
+      verifyTwoFactorSetup,
+      verifyTwoFactorLogin,
       signup,
       forgotPassword,
       logout,
@@ -369,6 +494,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       admin,
       login,
+      verifyTwoFactorSetup,
+      verifyTwoFactorLogin,
       signup,
       forgotPassword,
       logout,

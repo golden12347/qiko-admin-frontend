@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { saveLoginFlow } from "@/lib/loginFlowStorage";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -24,6 +25,20 @@ export default function Login() {
 
     if (!result.ok) {
       toast.error(result.message ?? "Unable to sign in.");
+      return;
+    }
+
+    if (result.step === "setup") {
+      saveLoginFlow({ type: "setup", tempToken: result.tempToken, qr: result.qr });
+      if (result.message) toast.message(result.message);
+      setLocation("/login/setup");
+      return;
+    }
+
+    if (result.step === "2fa") {
+      saveLoginFlow({ type: "2fa", tempToken: result.tempToken });
+      if (result.message) toast.message(result.message);
+      setLocation("/login/authenticator");
       return;
     }
 
