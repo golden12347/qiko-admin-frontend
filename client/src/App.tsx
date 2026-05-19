@@ -20,6 +20,8 @@ const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
 const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
 // const ConversationDetail = lazy(() => import("./pages/ConversationDetail"));
 const Login = lazy(() => import("./pages/Login"));
+const GoogleSetupScreen = lazy(() => import("./pages/GoogleSetupScreen"));
+const AuthenticatorScreen = lazy(() => import("./pages/AuthenticatorScreen"));
 const Signup = lazy(() => import("./pages/Signup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const PasswordSet = lazy(() => import("./pages/PasswordSet"));
@@ -52,11 +54,16 @@ function PublicAuthRoutes() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         <Route path="/login" component={Login} />
+        <Route path="/login/setup" component={GoogleSetupScreen} />
+        <Route path="/login/authenticator" component={AuthenticatorScreen} />
         <Route path="/signup" component={Signup} />
         <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/password-set" component={PasswordSet} />
         <Route>
-          {location.startsWith("/login") || location.startsWith("/signup") || location.startsWith("/forgot-password") || location.startsWith("/password-set")
+          {location.startsWith("/login") ||
+          location.startsWith("/signup") ||
+          location.startsWith("/forgot-password") ||
+          location.startsWith("/password-set")
             ? <NotFound />
             : <Login />}
         </Route>
