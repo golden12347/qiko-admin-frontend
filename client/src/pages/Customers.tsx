@@ -41,13 +41,19 @@ import {
   MessageSquare,
   MailPlus,
   Trash2,
+  Layers,
+  Building2,
+  CircleOff,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   adminCustomerList,
   adminCustomerSendInvite,
   adminDeleteCustomer,
   type CustomerListApiResponse,
+  type CustomerPlanType,
 } from "@/services/adminCustomersApi";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGlobalDateFilter } from "@/contexts/DateFilterContext";
 import { useIsSuperAdmin } from "@/store/hooks";
 import { toast } from "sonner";
@@ -84,6 +90,39 @@ type SortKey =
   | "joinedDate";
 
 type SortDir = "asc" | "desc";
+
+const PLAN_TABS: Array<{
+  value: CustomerPlanType;
+  label: string;
+  description: string;
+  icon: typeof Layers;
+  activeClass: string;
+}> = [
+  {
+    value: "standard",
+    label: "Standard",
+    description: "Stripe subscriptions",
+    icon: Layers,
+    activeClass:
+      "data-[state=active]:bg-qiko-indigo/12 data-[state=active]:text-qiko-indigo data-[state=active]:shadow-[inset_0_0_0_1px_rgba(99,102,241,0.35)]",
+  },
+  {
+    value: "enterprise",
+    label: "Enterprise",
+    description: "Custom billing",
+    icon: Building2,
+    activeClass:
+      "data-[state=active]:bg-qiko-warning/12 data-[state=active]:text-qiko-warning data-[state=active]:shadow-[inset_0_0_0_1px_rgba(245,158,11,0.35)]",
+  },
+  {
+    value: "no_plan",
+    label: "No plan",
+    description: "Not subscribed",
+    icon: CircleOff,
+    activeClass:
+      "data-[state=active]:bg-secondary data-[state=active]:text-foreground data-[state=active]:shadow-[inset_0_0_0_1px_rgba(148,163,184,0.25)]",
+  },
+];
 
 type DisplayPlan = "Basic" | "Standard" | "Enterprise" | "N/A";
 type DisplayStatus = string;
@@ -259,11 +298,12 @@ export default function Customers() {
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [activeStripeStatusCount, setActiveStripeStatusCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [planType, setPlanType] = useState<CustomerPlanType>("standard");
 
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await adminCustomerList(page, filter, committedSearch);
+      const data = await adminCustomerList(page, filter, committedSearch, planType);
       const list = extractCustomerArray(data);
 
       const normalized = list.map((item) => normalizeCustomer(item));
@@ -301,7 +341,7 @@ export default function Customers() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter, page, committedSearch]);
+  }, [filter, page, committedSearch, planType]);
 
   useEffect(() => {
     fetchCustomers();
@@ -346,7 +386,7 @@ export default function Customers() {
       return;
     }
     setPage(1);
-  }, [committedSearch]);
+  }, [committedSearch, planType]);
 
   const stats = useMemo(() => ({
     total: totalCustomers,
@@ -572,6 +612,63 @@ export default function Customers() {
           </CardContent>
         </Card>
       )}
+
+      <Tabs
+        value={planType}
+        onValueChange={(value) => {
+          setPlanType(value as CustomerPlanType);
+          setPage(1);
+        }}
+        className="w-full"
+      >
+        <TabsList
+          className={cn(
+            "grid h-auto w-full max-w-3xl grid-cols-3 gap-1 rounded-xl p-1.5",
+            "bg-card/60 border border-border/50 shadow-sm backdrop-blur-sm"
+          )}
+        >
+          {PLAN_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = planType === tab.value;
+            return (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className={cn(
+                  "flex h-auto min-h-[52px] flex-col items-start gap-0.5 rounded-lg px-3 py-2.5 text-left",
+                  "border border-transparent transition-all duration-200",
+                  "text-muted-foreground hover:bg-secondary/35 hover:text-foreground",
+                  "focus-visible:ring-2 focus-visible:ring-qiko-indigo/30",
+                  "data-[state=active]:shadow-sm",
+                  tab.activeClass
+                )}
+              >
+                <span className="flex w-full items-center gap-2">
+                  <span
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                      isActive ? "bg-background/40" : "bg-secondary/50"
+                    )}
+                  >
+                    <Icon className="size-3.5 shrink-0" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                    <span className="text-xs font-semibold leading-none">{tab.label}</span>
+                    <span className="text-[10px] font-normal leading-tight opacity-70">
+                      {tab.description}
+                    </span>
+                  </span>
+                  {isActive && !isLoading && (
+                    <span className="shrink-0 rounded-md bg-background/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums">
+                      {totalCustomers}
+                    </span>
+                  )}
+                </span>
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
 
       <div className="space-y-6">
       {isLoading ? (
