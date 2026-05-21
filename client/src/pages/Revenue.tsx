@@ -21,6 +21,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { isDateInGlobalRange, parseDateValue, useGlobalDateFilter } from "@/contexts/DateFilterContext";
+import { useAppSelector } from "@/store/hooks";
 import { adminRevenue } from "@/services/adminRevenueApi";
 import { toast } from "sonner";
 import { RevenueDashboardSkeleton } from "@/components/tabPageSkeletons";
@@ -79,7 +80,12 @@ function displayRevenuePlanName(raw: unknown): string {
 }
 
 export default function Revenue() {
+  const reduxState = useAppSelector((state) => state);
   const { filter } = useGlobalDateFilter();
+
+  useEffect(() => {
+    console.log("[Revenue] Redux state:", reduxState);
+  }, [reduxState]);
   const [custSort, setCustSort] = useState<{ key: CustomerSortKey; dir: SortDir }>({ key: "totalRevenue", dir: "desc" });
   const [revenueCounts, setRevenueCounts] = useState({
     totalEarning: 0,

@@ -30,6 +30,8 @@ import {
   MessageSquare,
   ChevronRight,
   ExternalLink,
+  Users,
+  CreditCard,
 } from "lucide-react";
 import {
   customers,
@@ -73,6 +75,21 @@ const planColors: Record<string, string> = {
 const workerStatusColors: Record<string, string> = {
   live: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
   training: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/20",
+};
+
+const teamStatusColors: Record<string, string> = {
+  Active: "bg-qiko-success/15 text-qiko-success border-qiko-success/20",
+  Invited: "bg-qiko-cyan/15 text-qiko-cyan border-qiko-cyan/20",
+  Inactive: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/20",
+};
+
+type TeamMemberRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: "Active" | "Invited" | "Inactive";
+  joinedDate: string;
 };
 
 const normalizeWorkerStatus = (status: string) => (status === "live" ? "live" : "training");
@@ -150,6 +167,104 @@ function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr || "—";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatJoinedDate(dateStr: string): string {
+  if (!dateStr || !dateStr.trim()) return "—";
+  const normalized =
+    dateStr.includes(" ") && !dateStr.includes("T") ? dateStr.replace(" ", "T") : dateStr;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function formatCurrency(n: number): string {
+  return `$${n.toLocaleString()}`;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^0-9.-]/g, "");
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function resolveSubscriptionAmount(
+  details: CustomerDetailsData | null,
+  user: Record<string, unknown> | null
+): number | null {
+  const candidates = [
+    details?.subscription_amount,
+    details?.subscription_amount_monthly,
+    details?.monthly_subscription,
+    user?.subscription_amount,
+    user?.subscription_amount_monthly,
+    user?.monthly_subscription,
+  ];
+
+  for (const raw of candidates) {
+    if (raw == null || raw === "") continue;
+    const parsed = toNumber(raw, NaN);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function resolvePaidOnDate(
+  details: CustomerDetailsData | null,
+  user: Record<string, unknown> | null
+): string | null {
+  const candidates = [
+    details?.subscription_date,
+    user?.subscription_date,
+  ];
+
+  for (const raw of candidates) {
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  }
+  return null;
+}
+
+function resolveNextPaymentDate(
+  details: CustomerDetailsData | null,
+  user: Record<string, unknown> | null
+): string | null {
+  const candidates = [details?.next_payment_date, details?.next_billing_date, user?.next_payment_date, user?.next_billing_date];
+
+  for (const raw of candidates) {
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  }
+  return null;
+}
+
+function extractTeamMembers(data: CustomerDetailsData | null): unknown[] {
+  if (!data) return [];
+  if (Array.isArray(data.team_members)) return data.team_members;
+  if (Array.isArray(data.team)) return data.team;
+  if (Array.isArray(data.members)) return data.members;
+  return [];
+}
+
+function normalizeTeamStatus(status: unknown): TeamMemberRow["status"] {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (normalized === "active") return "Active";
+  if (normalized === "invited" || normalized === "pending") return "Invited";
+  return "Inactive";
+}
+
+function normalizeTeamMember(item: unknown, index: number): TeamMemberRow {
+  const row = (item ?? {}) as Record<string, unknown>;
+  return {
+    id: String(row.id ?? row.user_id ?? `tm-${index}`),
+    name: String(row.name ?? row.user_name ?? "—"),
+    email: String(row.email ?? row.user_email ?? ""),
+    role: String(row.role ?? row.role_name ?? "—"),
+    status: normalizeTeamStatus(row.status),
+    joinedDate: String(row.date ?? row.joined_date ?? row.joined_at ?? row.created_at ?? ""),
+  };
 }
 
 function normalizeWorkerStatusLabel(status: string): "live" | "training" {
@@ -271,9 +386,27 @@ export default function CustomerDetail() {
     [customerDetails?.recent_conversations]
   );
 
+  const detailTeamMembers = useMemo(
+    () => extractTeamMembers(customerDetails).map((item, index) => normalizeTeamMember(item, index)),
+    [customerDetails]
+  );
+
   const displayStatus = normalizeCustomerStatus(String(userDetails?.stripe_status ?? ""));
   const displayPlan = normalizeCustomerPlan(String(userDetails?.subscription_plan_name ?? ""));
   const isStudio = parseIsStudio(userDetails?.is_studio);
+
+  const displaySubscriptionAmount = useMemo(
+    () => resolveSubscriptionAmount(customerDetails, userDetails),
+    [customerDetails, userDetails]
+  );
+  const displayPaidOnDate = useMemo(
+    () => resolvePaidOnDate(customerDetails, userDetails),
+    [customerDetails, userDetails]
+  );
+  const displayNextPaymentDate = useMemo(
+    () => resolveNextPaymentDate(customerDetails, userDetails),
+    [customerDetails, userDetails]
+  );
 
   const studioUserId = useMemo(() => {
     if (selectedUserId) return selectedUserId;
@@ -416,6 +549,100 @@ export default function CustomerDetail() {
           </Card>
         </motion.div>
       </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
+      >
+        <Card className="bg-card border-border/50 shadow-sm">
+          <CardHeader className="py-3 border-b border-border/50">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <CreditCard className="size-4 text-qiko-indigo" />
+              Subscription
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Monthly amount</p>
+                <p className="font-medium tabular-nums">
+                  {displaySubscriptionAmount != null
+                    ? `${formatCurrency(displaySubscriptionAmount)}/mo`
+                    : "Not set"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Status</p>
+                <Badge variant="outline" className={`text-[10px] ${statusColors[displayStatus]}`}>
+                  {displayStatus}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Next payment date</p>
+                <p className="font-medium">
+                  {displayNextPaymentDate ? formatDate(displayNextPaymentDate) : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Paid on</p>
+                <p className="font-medium">
+                  {displayPaidOnDate ? formatJoinedDate(displayPaidOnDate) : "—"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {detailTeamMembers.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.12 }}
+        >
+          <Card className="bg-card border-border/50 shadow-sm">
+            <CardHeader className="py-3 border-b border-border/50">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="size-4 text-qiko-indigo" />
+                Team Members ({detailTeamMembers.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border/40 hover:bg-transparent bg-secondary/10">
+                      <TableHead className="text-xs font-medium text-muted-foreground">Name</TableHead>
+                      <TableHead className="text-xs font-medium text-muted-foreground">Email</TableHead>
+                      <TableHead className="text-xs font-medium text-muted-foreground">Role</TableHead>
+                      <TableHead className="text-xs font-medium text-muted-foreground">Status</TableHead>
+                      <TableHead className="text-xs font-medium text-muted-foreground">Joined</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailTeamMembers.map((m) => (
+                      <TableRow key={m.id} className="border-border/30">
+                        <TableCell className="text-sm font-medium">{m.name}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{m.email}</TableCell>
+                        <TableCell className="text-sm">{m.role}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`text-[10px] ${teamStatusColors[m.status]}`}>
+                            {m.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatJoinedDate(m.joinedDate)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* ── Workers Table ───────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.15 }}>

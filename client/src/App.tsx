@@ -18,8 +18,6 @@ const Workers = lazy(() => import("./pages/Workers"));
 const Revenue = lazy(() => import("./pages/Revenue"));
 const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
 const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
-const EnterpriseCustomers = lazy(() => import("./pages/EnterpriseCustomers"));
-const EnterpriseCustomerDetail = lazy(() => import("./pages/EnterpriseCustomerDetail"));
 // const ConversationDetail = lazy(() => import("./pages/ConversationDetail"));
 const Login = lazy(() => import("./pages/Login"));
 const GoogleSetupScreen = lazy(() => import("./pages/GoogleSetupScreen"));
@@ -93,8 +91,6 @@ function PrivateRoutes() {
           <Route path="/" component={Overview} />
           <Route path="/customers" component={Customers} />
           <Route path="/customers/:slug" component={CustomerDetail} />
-          <Route path="/enterprise" component={EnterpriseCustomers} />
-          <Route path="/enterprise/:slug" component={EnterpriseCustomerDetail} />
           <Route path="/workers" component={Workers} />
           {/* Conversations list + detail — hidden (restore lazy imports + routes to show again) */}
           {/* <Route path="/conversations" component={Conversations} /> */}

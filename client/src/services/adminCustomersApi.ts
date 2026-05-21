@@ -6,6 +6,8 @@ const customerListClient = new APIClient("/api/v1/admin/customer-list", {
   baseURL: BACKEND_BASE_URL,
 });
 
+export type CustomerPlanType = "standard" | "enterprise" | "no_plan";
+
 export interface CustomerListApiResponse {
   data?: unknown[];
   items?: unknown[];
@@ -26,16 +28,18 @@ export interface CustomerListApiResponse {
 
 /**
  * Fetch paginated admin customer list.
- * Optional `search` is sent as a query param when non-empty (server-side search).
+ * `plan_type` defaults to `standard`. Optional `search` when non-empty.
  */
 export async function adminCustomerList(
   page: number,
   filter?: ApiDateFilterStateLike,
-  search?: string
+  search?: string,
+  planType: CustomerPlanType = "standard"
 ): Promise<CustomerListApiResponse> {
   const q = (search ?? "").trim();
   const params: Record<string, unknown> = {
     page,
+    plan_type: planType,
     ...buildDateFilterParams(filter),
   };
   if (q.length > 0) {

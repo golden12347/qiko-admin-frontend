@@ -24,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import {
   LayoutDashboard,
   Users,
-  Building2,
   Bot,
   // MessageSquare, // hidden with Conversations tab
   DollarSign,
@@ -39,7 +38,6 @@ const mainNavItems = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
   { label: "Revenue", href: "/revenue", icon: DollarSign },
   { label: "Customers", href: "/customers", icon: Users },
-  { label: "Enterprise", href: "/enterprise", icon: Building2 },
   { label: "Workers", href: "/workers", icon: Bot },
   // { label: "Conversations", href: "/conversations", icon: MessageSquare },
   { label: "Admin Users", href: "/admin-users", icon: Users },
@@ -195,7 +193,6 @@ function Breadcrumb({ location }: { location: string }) {
 
   const labelMap: Record<string, string> = {
     customers: "Customers",
-    enterprise: "Enterprise",
     workers: "Workers",
     // conversations: "Conversations",
     revenue: "Revenue",
