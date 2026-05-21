@@ -44,7 +44,9 @@ import {
   Layers,
   Building2,
   CircleOff,
+  Link2,
 } from "lucide-react";
+import { SendPaymentLinkDialog } from "@/components/customers/SendPaymentLinkDialog";
 import { cn } from "@/lib/utils";
 import {
   adminCustomerList,
@@ -299,6 +301,9 @@ export default function Customers() {
   const [activeStripeStatusCount, setActiveStripeStatusCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [planType, setPlanType] = useState<CustomerPlanType>("standard");
+  const [paymentLinkTarget, setPaymentLinkTarget] = useState<CustomerRow | null>(null);
+
+  const showNoPlanPaymentLink = planType === "no_plan";
 
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
@@ -732,6 +737,11 @@ export default function Customers() {
                     <SortableHead col="conversationsTotal" label="Conversations" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="conversationsTotal" />} align="right" />
                     <SortableHead col="totalEarnings" label="Total Earnings" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="totalEarnings" />} align="right" />
                     <SortableHead col="joinedDate" label="Joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} icon={<SortIcon col="joinedDate" />} />
+                    {showNoPlanPaymentLink && (
+                      <TableHead className="text-xs font-medium text-muted-foreground text-right min-w-[148px]">
+                        Payment link
+                      </TableHead>
+                    )}
                     {isSuperAdmin && (
                       <TableHead className="text-xs font-medium text-muted-foreground text-right w-[88px]">
                         Actions
@@ -787,6 +797,21 @@ export default function Customers() {
                         {formatDate(c.joinedDate)}
                       </TableCell>
 
+                      {showNoPlanPaymentLink && (
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs border-border/50"
+                            onClick={() => setPaymentLinkTarget(c)}
+                          >
+                            <Link2 className="size-3.5" />
+                            Send payment link
+                          </Button>
+                        </TableCell>
+                      )}
+
                       {isSuperAdmin && (
                         <TableCell className="text-right w-[88px]" onClick={(e) => e.stopPropagation()}>
                           <Button
@@ -810,7 +835,12 @@ export default function Customers() {
 
                   {!isLoading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={isSuperAdmin ? 10 : 9} className="text-center py-12 text-muted-foreground">
+                      <TableCell
+                        colSpan={
+                          9 + (showNoPlanPaymentLink ? 1 : 0) + (isSuperAdmin ? 1 : 0)
+                        }
+                        className="text-center py-12 text-muted-foreground"
+                      >
                         No customers found for this page.
                       </TableCell>
                     </TableRow>
@@ -850,6 +880,21 @@ export default function Customers() {
         </div>
       </div>
       </div>
+
+      <SendPaymentLinkDialog
+        open={paymentLinkTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPaymentLinkTarget(null);
+        }}
+        customerName={paymentLinkTarget?.name ?? ""}
+        customerEmail={paymentLinkTarget?.contactEmail}
+        onSubmit={(amount) => {
+          if (!paymentLinkTarget) return;
+          toast.success(
+            `Payment link UI submitted for ${paymentLinkTarget.name} at $${amount.toLocaleString()} (API not connected yet).`
+          );
+        }}
+      />
 
       <AlertDialog
         open={deleteTarget !== null}
