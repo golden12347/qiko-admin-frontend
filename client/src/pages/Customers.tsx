@@ -12,6 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -52,6 +59,8 @@ import {
   adminCustomerList,
   adminCustomerSendInvite,
   adminDeleteCustomer,
+  CUSTOMER_INVITE_PLAN_OPTIONS,
+  type CustomerInvitePlanType,
   type CustomerListApiResponse,
   type CustomerPlanType,
 } from "@/services/adminCustomersApi";
@@ -292,6 +301,7 @@ export default function Customers() {
   const [inviteCustomerOpen, setInviteCustomerOpen] = useState(false);
   const [customerInviteName, setCustomerInviteName] = useState("");
   const [customerInviteEmail, setCustomerInviteEmail] = useState("");
+  const [customerInvitePlan, setCustomerInvitePlan] = useState<CustomerInvitePlanType>("standard");
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -493,10 +503,15 @@ export default function Customers() {
     }
     setInviteSubmitting(true);
     try {
-      const res = await adminCustomerSendInvite({ user_name, email });
+      const res = await adminCustomerSendInvite({
+        user_name,
+        email,
+        customer_type: customerInvitePlan,
+      });
       toast.success(typeof res.message === "string" && res.message.length > 0 ? res.message : "Invite sent.");
       setCustomerInviteName("");
       setCustomerInviteEmail("");
+      setCustomerInvitePlan("standard");
       await fetchCustomers();
     } catch (err: unknown) {
       const ax = err as {
@@ -577,10 +592,10 @@ export default function Customers() {
         <Card className="bg-card/80 border-border/40">
           <CardHeader>
             <CardTitle className="text-base">Invite Customer</CardTitle>
-            <CardDescription>Add full name and email to invite a customer.</CardDescription>
+            <CardDescription>Add full name, email, and plan to invite a customer.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCustomerInviteSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <form onSubmit={handleCustomerInviteSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="customer-invite-name">Full name</Label>
                 <Input
@@ -594,7 +609,7 @@ export default function Customers() {
                   disabled={inviteSubmitting}
                 />
               </div>
-              <div className="space-y-1.5 md:col-span-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="customer-invite-email">Email address</Label>
                 <Input
                   id="customer-invite-email"
@@ -607,8 +622,30 @@ export default function Customers() {
                   disabled={inviteSubmitting}
                 />
               </div>
-              <div className="md:col-span-3 flex items-center justify-end">
-                <Button type="submit" className="gap-1.5" disabled={inviteSubmitting}>
+              <div className="space-y-1.5">
+                <Label htmlFor="customer-invite-plan">Plan</Label>
+                <Select
+                  value={customerInvitePlan}
+                  onValueChange={(v) => setCustomerInvitePlan(v as CustomerInvitePlanType)}
+                  disabled={inviteSubmitting}
+                >
+                  <SelectTrigger
+                    id="customer-invite-plan"
+                    className="w-full bg-secondary/30 border-border/30"
+                  >
+                    <SelectValue placeholder="Select plan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CUSTOMER_INVITE_PLAN_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end justify-end">
+                <Button type="submit" className="gap-1.5 w-full md:w-auto" disabled={inviteSubmitting}>
                   <MailPlus className="size-3.5" />
                   {inviteSubmitting ? "Sending…" : "Send Invite"}
                 </Button>
@@ -886,14 +923,10 @@ export default function Customers() {
         onOpenChange={(open) => {
           if (!open) setPaymentLinkTarget(null);
         }}
+        customerId={paymentLinkTarget?.id ?? ""}
         customerName={paymentLinkTarget?.name ?? ""}
         customerEmail={paymentLinkTarget?.contactEmail}
-        onSubmit={(amount) => {
-          if (!paymentLinkTarget) return;
-          toast.success(
-            `Payment link UI submitted for ${paymentLinkTarget.name} at $${amount.toLocaleString()} (API not connected yet).`
-          );
-        }}
+        onSuccess={() => void fetchCustomers()}
       />
 
       <AlertDialog

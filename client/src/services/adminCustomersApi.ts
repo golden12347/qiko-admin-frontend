@@ -8,6 +8,17 @@ const customerListClient = new APIClient("/api/v1/admin/customer-list", {
 
 export type CustomerPlanType = "standard" | "enterprise" | "no_plan";
 
+/** Plans available when inviting a customer via send-invite */
+export type CustomerInvitePlanType = "standard" | "enterprise";
+
+export const CUSTOMER_INVITE_PLAN_OPTIONS: ReadonlyArray<{
+  label: string;
+  value: CustomerInvitePlanType;
+}> = [
+  { label: "Standard", value: "standard" },
+  { label: "Enterprise", value: "enterprise" },
+];
+
 export interface CustomerListApiResponse {
   data?: unknown[];
   items?: unknown[];
@@ -64,6 +75,7 @@ const customerSendInviteClient = new APIClient("/api/v1/admin/customer/send-invi
 export interface CustomerSendInvitePayload {
   user_name: string;
   email: string;
+  customer_type: CustomerInvitePlanType;
 }
 
 export interface CustomerSendInviteResponse {
