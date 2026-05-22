@@ -4,7 +4,7 @@
 // Design: Dark Lattice — Qiko brand tokens
 // ============================================================
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,19 +12,23 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DollarSign, TrendingUp, Users, ArrowUpRight, ArrowDownRight,
-  Zap, ChevronsUpDown, ChevronUp, ChevronDown,
+  DollarSign, Users, ArrowUpRight, ArrowDownRight,
+  ChevronsUpDown, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { isDateInGlobalRange, parseDateValue, useGlobalDateFilter } from "@/contexts/DateFilterContext";
-import { adminRevenue } from "@/services/adminRevenueApi";
 import {
   adminCustomerInvoices,
   extractCustomerInvoiceRowsFromPayload,
+  extractCustomerInvoicesPagination,
+  extractInvoiceRevenueSummaryFromPayload,
+  extractRevenueOverTimeFromPayload,
+  extractTopCustomersByRevenueFromPayload,
   mapCustomerInvoicesToTableRows,
+  mapTopCustomersByRevenueFromInvoices,
 } from "@/services/adminCustomerInvoicesApi";
 import { toast } from "sonner";
 import { useAppSelector } from "@/store/hooks";
@@ -45,6 +49,7 @@ const planBadgeColors: Record<string, string> = {
   Basic: "bg-muted-foreground/10 text-muted-foreground",
   Standard: "bg-qiko-indigo/10 text-qiko-indigo",
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
+  "N/A": "bg-muted-foreground/10 text-muted-foreground",
 };
 
 const tooltipStyle = {
@@ -59,6 +64,13 @@ function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return n.toLocaleString();
+}
+
+function formatUsd(amount: number): string {
+  return `$${amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatBillingDate(value: string): string {
@@ -110,23 +122,19 @@ export default function Revenue() {
   const [revenueCounts, setRevenueCounts] = useState({
     totalEarning: 0,
     averageRevenuePerUser: 0,
-    averageRevenuePerAgent: 0,
   });
   const [revenuePercentages, setRevenuePercentages] = useState({
     totalEarningPercentage: 0,
     averageRevenuePerUserPercentage: 0,
-    averageRevenuePerAgentPercentage: 0,
   });
   const [revenueOverTimeApi, setRevenueOverTimeApi] = useState<Array<{ month: string; earning: number }>>([]);
   const [customerRevenueTableApi, setCustomerRevenueTableApi] = useState<CustomerRevenueRow[]>([]);
+  const [customerInvoicePage, setCustomerInvoicePage] = useState(1);
+  const [customerInvoiceTotalPages, setCustomerInvoiceTotalPages] = useState(1);
+  const [customerInvoiceTotal, setCustomerInvoiceTotal] = useState(0);
   const [customerTableLoading, setCustomerTableLoading] = useState(false);
-  const hasLoadedRevenueOnce = useRef(false);
-  const prevFilterKeyLoaded = useRef<string | null>(null);
   const [topCustomersByRevenueApi, setTopCustomersByRevenueApi] = useState<
-    Array<{ name: string; amount: number }>
-  >([]);
-  const [planDistributionApi, setPlanDistributionApi] = useState<
-    Array<{ plan: "Basic" | "Standard" | "Enterprise"; customers: number; mrr: number }>
+    Array<{ name: string; amount: number; stripeCustomerId: string }>
   >([]);
   const [revenueLoading, setRevenueLoading] = useState(true);
 
@@ -137,25 +145,10 @@ export default function Revenue() {
 
   const customerRevenueData = useMemo(() => customerRevenueTableApi, [customerRevenueTableApi]);
 
-  const normalizedPlanDistribution = useMemo(() => {
-    if (planDistributionApi.length > 0) return planDistributionApi;
-    return [
-      { plan: "Basic", customers: 0, mrr: 0 },
-      { plan: "Standard", customers: 0, mrr: 0 },
-      { plan: "Enterprise", customers: 0, mrr: 0 },
-    ];
-  }, [planDistributionApi]);
-
-  // Basic + Enterprise plan tiles hidden in UI; only Standard (premium tier) row is shown.
-  const planDistributionVisibleRows = useMemo(
-    () => normalizedPlanDistribution.filter((p) => p.plan !== "Basic" && p.plan !== "Enterprise"),
-    [normalizedPlanDistribution]
-  );
-
   const kpis = [
     {
       label: "Total Revenue",
-      value: `$${revenueCounts.totalEarning.toLocaleString()}`,
+      value: formatUsd(revenueCounts.totalEarning),
       trend: revenuePercentages.totalEarningPercentage,
       icon: DollarSign,
       color: "text-emerald-400",
@@ -164,22 +157,23 @@ export default function Revenue() {
     },
     {
       label: "Avg Revenue / Customer",
-      value: `$${revenueCounts.averageRevenuePerUser.toLocaleString()}`,
+      value: formatUsd(revenueCounts.averageRevenuePerUser),
       trend: revenuePercentages.averageRevenuePerUserPercentage,
       icon: Users,
       color: "text-violet-400",
       bg: "bg-violet-400/10",
       sub: "Active accounts",
     },
-    {
-      label: "Avg Revenue / Worker",
-      value: `$${revenueCounts.averageRevenuePerAgent.toLocaleString()}`,
-      trend: revenuePercentages.averageRevenuePerAgentPercentage,
-      icon: Zap,
-      color: "text-qiko-success",
-      bg: "bg-qiko-success/10",
-      sub: "Live workers",
-    },
+    // Avg Revenue / Worker — hidden (customer-invoices does not drive this KPI)
+    // {
+    //   label: "Avg Revenue / Worker",
+    //   value: formatUsd(revenueCounts.averageRevenuePerAgent),
+    //   trend: revenuePercentages.averageRevenuePerAgentPercentage,
+    //   icon: Zap,
+    //   color: "text-qiko-success",
+    //   bg: "bg-qiko-success/10",
+    //   sub: "Live workers",
+    // },
   ];
 
   const sortedCustomers = useMemo(() => {
@@ -237,105 +231,9 @@ export default function Revenue() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-    const filterChanged =
-      prevFilterKeyLoaded.current !== null && prevFilterKeyLoaded.current !== filterKey;
-    if (filterChanged || !hasLoadedRevenueOnce.current) {
-      setRevenueLoading(true);
-    }
-
-    (async () => {
-      try {
-        const response = await adminRevenue(filter);
-        if (cancelled) return;
-        setRevenueCounts({
-          totalEarning: toNumber(response.total_earning),
-          averageRevenuePerUser: toNumber(response.average_revenue_per_user),
-          averageRevenuePerAgent: toNumber(response.average_revenue_per_agent),
-        });
-        setRevenuePercentages({
-          totalEarningPercentage: toNumber(response.total_earning_percentage),
-          averageRevenuePerUserPercentage: toNumber(response.average_revenue_per_user_percentage),
-          averageRevenuePerAgentPercentage: toNumber(response.average_revenue_per_agent_percentage),
-        });
-        setRevenueOverTimeApi(
-          Array.isArray(response.revenue_over_time)
-            ? response.revenue_over_time.map((item) => ({
-                month: String(
-                  item.month ??
-                  (item as Record<string, unknown>).label ??
-                  (item as Record<string, unknown>).period ??
-                  (item as Record<string, unknown>).date ??
-                  "—"
-                ),
-                earning: toNumber(
-                  item.earning ??
-                  (item as Record<string, unknown>).total_earning ??
-                  (item as Record<string, unknown>).total_earnings ??
-                  (item as Record<string, unknown>).revenue ??
-                  (item as Record<string, unknown>).mrr
-                ),
-              }))
-            : []
-        );
-        setTopCustomersByRevenueApi(
-          Array.isArray(response.top_customers_earnings)
-            ? response.top_customers_earnings.map((item) => ({
-                name: String(item.user_name ?? "—"),
-                amount: toNumber(item.total_earnings),
-              }))
-            : []
-        );
-        const planDistribution = response.plan_distribution;
-        if (planDistribution && typeof planDistribution === "object") {
-          setPlanDistributionApi([
-            {
-              plan: "Basic",
-              customers: toNumber(planDistribution.basic),
-              mrr: toNumber(planDistribution.basic_total_amount),
-            },
-            {
-              plan: "Standard",
-              customers: toNumber(planDistribution.premium),
-              mrr: toNumber(planDistribution.premium_total_amount),
-            },
-            {
-              plan: "Enterprise",
-              customers: toNumber(planDistribution.enterprise),
-              mrr: toNumber(planDistribution.enterprise_total_amount),
-            },
-          ]);
-        } else {
-          setPlanDistributionApi([]);
-        }
-      } catch {
-        if (cancelled) return;
-        toast.error("Failed to fetch revenue data.");
-        setRevenueCounts({
-          totalEarning: 0,
-          averageRevenuePerUser: 0,
-          averageRevenuePerAgent: 0,
-        });
-        setRevenuePercentages({
-          totalEarningPercentage: 0,
-          averageRevenuePerUserPercentage: 0,
-          averageRevenuePerAgentPercentage: 0,
-        });
-        setRevenueOverTimeApi([]);
-        setTopCustomersByRevenueApi([]);
-        setPlanDistributionApi([]);
-      } finally {
-        if (!cancelled) {
-          setRevenueLoading(false);
-          hasLoadedRevenueOnce.current = true;
-          prevFilterKeyLoaded.current = filterKey;
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [filter, filterKey]);
+    setCustomerInvoicePage(1);
+    setRevenueLoading(true);
+  }, [filterKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -343,24 +241,73 @@ export default function Revenue() {
 
     (async () => {
       try {
-        const invoiceResponse = await adminCustomerInvoices();
+        const invoiceResponse = await adminCustomerInvoices(filter, {
+          page: customerInvoicePage,
+        });
         if (cancelled) return;
         const rawInvoices = extractCustomerInvoiceRowsFromPayload(invoiceResponse);
         setCustomerRevenueTableApi(mapCustomerInvoicesToTableRows(rawInvoices));
+
+        const topFromApi = extractTopCustomersByRevenueFromPayload(invoiceResponse);
+        setTopCustomersByRevenueApi(
+          topFromApi.length > 0
+            ? topFromApi
+            : mapTopCustomersByRevenueFromInvoices(rawInvoices, 5)
+        );
+
+        const pagination = extractCustomerInvoicesPagination(invoiceResponse);
+        setCustomerInvoiceTotal(pagination?.total ?? rawInvoices.length);
+        setCustomerInvoiceTotalPages(pagination?.last_page ?? 1);
+
+        setRevenueOverTimeApi(extractRevenueOverTimeFromPayload(invoiceResponse));
+
+        const invoiceSummary = extractInvoiceRevenueSummaryFromPayload(invoiceResponse);
+        if (invoiceSummary) {
+          setRevenueCounts({
+            totalEarning: invoiceSummary.totalEarning,
+            averageRevenuePerUser: invoiceSummary.averageRevenuePerUser,
+          });
+          setRevenuePercentages({
+            totalEarningPercentage: invoiceSummary.totalEarningPercentage,
+            averageRevenuePerUserPercentage: invoiceSummary.averageRevenuePerUserPercentage,
+          });
+        } else {
+          setRevenueCounts({
+            totalEarning: 0,
+            averageRevenuePerUser: 0,
+          });
+          setRevenuePercentages({
+            totalEarningPercentage: 0,
+            averageRevenuePerUserPercentage: 0,
+          });
+        }
       } catch {
         if (cancelled) return;
         toast.error("Failed to fetch customer invoices.");
         setCustomerRevenueTableApi([]);
+        setTopCustomersByRevenueApi([]);
+        setCustomerInvoiceTotal(0);
+        setCustomerInvoiceTotalPages(1);
+        setRevenueCounts({
+          totalEarning: 0,
+          averageRevenuePerUser: 0,
+        });
+        setRevenuePercentages({
+          totalEarningPercentage: 0,
+          averageRevenuePerUserPercentage: 0,
+        });
+        setRevenueOverTimeApi([]);
       } finally {
         if (!cancelled) {
           setCustomerTableLoading(false);
+          setRevenueLoading(false);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filter, filterKey, customerInvoicePage]);
 
   return (
     <div className="p-6 space-y-6">
@@ -378,7 +325,7 @@ export default function Revenue() {
         <RevenueDashboardSkeleton />
       ) : (
         <>
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {kpis.map((kpi, i) => (
           <motion.div key={kpi.label} custom={i} variants={fadeUp} initial="hidden" animate="visible">
             <Card className="bg-card/80 border-border/40 h-full">
@@ -458,27 +405,38 @@ export default function Revenue() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="space-y-3">
-                {topCustomersByRevenueApi.slice(0, 8).map((acct, i) => {
-                  const maxRev = topCustomersByRevenueApi[0]?.amount || 1;
-                  const pct = (acct.amount / maxRev) * 100;
-                  return (
-                    <div key={acct.name} className="group">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-muted-foreground/50 w-4 tabular-nums">{i + 1}</span>
-                          <span className="text-xs font-medium truncate max-w-[120px]">{acct.name}</span>
+                {topCustomersByRevenueApi.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    No customer invoice data yet.
+                  </p>
+                ) : (
+                  topCustomersByRevenueApi.map((acct, i) => {
+                    const maxRev = topCustomersByRevenueApi[0]?.amount || 1;
+                    const pct = maxRev > 0 ? (acct.amount / maxRev) * 100 : 0;
+                    return (
+                      <div key={acct.stripeCustomerId} className="group">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-muted-foreground/50 w-4 tabular-nums">{i + 1}</span>
+                            <span className="text-xs font-medium truncate max-w-[120px]">{acct.name}</span>
+                          </div>
+                          <span className="text-xs font-medium tabular-nums">
+                            ${acct.amount.toLocaleString(undefined, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
                         </div>
-                        <span className="text-xs font-medium tabular-nums">${acct.amount.toLocaleString()}/mo</span>
+                        <div className="ml-6 h-1.5 rounded-full bg-secondary/30 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-qiko-indigo to-qiko-cyan transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="ml-6 h-1.5 rounded-full bg-secondary/30 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-qiko-indigo to-qiko-cyan transition-all duration-500"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </CardContent>
           </Card>
@@ -491,8 +449,8 @@ export default function Revenue() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-sm font-medium">Customer Revenue Table</CardTitle>
-              <span className="text-xs text-muted-foreground">
-                {sortedCustomers.length} total
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {sortedCustomers.length} on this page · {customerInvoiceTotal} total
               </span>
             </div>
           </CardHeader>
@@ -555,42 +513,30 @@ export default function Revenue() {
                 </TableBody>
               </Table>
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Plan Distribution Summary */}
-      <motion.div custom={10} variants={fadeUp} initial="hidden" animate="visible">
-        <Card className="bg-card/80 border-border/40">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Plan Distribution</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/*
-                Basic & Enterprise plan tiles — hidden. Restore: use normalizedPlanDistribution.map below
-                and remove planDistributionVisibleRows useMemo.
-              */}
-              {planDistributionVisibleRows.map((plan) => {
-                const totalCust = normalizedPlanDistribution.reduce((s, p) => s + p.customers, 0);
-                const pct = totalCust > 0 ? ((plan.customers / totalCust) * 100).toFixed(0) : "0";
-                return (
-                  <div key={plan.plan} className="rounded-lg border border-border/30 p-4 bg-secondary/10">
-                    <div className="flex items-center justify-between mb-2">
-                      <Badge variant="secondary" className={`text-[10px] border-0 ${planBadgeColors[plan.plan] || ""}`}>
-                        {plan.plan}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">{pct}%</span>
-                    </div>
-                    <p className="text-xl font-bold font-heading tabular-nums">{plan.customers}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">customers</p>
-                    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/20">
-                      <span className="text-[10px] text-muted-foreground">Total Revenue</span>
-                      <span className="text-xs font-medium tabular-nums text-qiko-success">${plan.mrr.toLocaleString()}</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 text-xs text-muted-foreground">
+              <span>
+                Page {customerInvoicePage} of {customerInvoiceTotalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="h-7 px-2 rounded-md border border-border/50 hover:bg-secondary/40 disabled:opacity-40 disabled:pointer-events-none"
+                  disabled={customerInvoicePage <= 1 || customerTableLoading}
+                  onClick={() => setCustomerInvoicePage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="h-7 px-2 rounded-md border border-border/50 hover:bg-secondary/40 disabled:opacity-40 disabled:pointer-events-none"
+                  disabled={
+                    customerInvoicePage >= customerInvoiceTotalPages || customerTableLoading
+                  }
+                  onClick={() => setCustomerInvoicePage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </CardContent>
         </Card>

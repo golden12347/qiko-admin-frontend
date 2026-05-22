@@ -190,8 +190,8 @@ export function ConversationsTableSkeletonRows() {
 export function RevenueDashboardSkeleton() {
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[0, 1, 2].map((i) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {[0, 1].map((i) => (
           <Card key={i} className="bg-card/80 border-border/40 h-full">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start justify-between">
@@ -253,18 +253,6 @@ export function RevenueDashboardSkeleton() {
                 <Skeleton className="h-4 w-20 ml-auto" />
                 <Skeleton className="h-3 w-24 ml-auto sm:ml-0" />
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-      <Card className="bg-card/80 border-border/40">
-        <CardHeader className="pb-3">
-          <Skeleton className="h-4 w-40" />
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-28 rounded-lg" />
             ))}
           </div>
         </CardContent>
