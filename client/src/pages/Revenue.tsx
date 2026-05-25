@@ -31,7 +31,6 @@ import {
   mapTopCustomersByRevenueFromInvoices,
 } from "@/services/adminCustomerInvoicesApi";
 import { toast } from "sonner";
-import { useAppSelector } from "@/store/hooks";
 import { RevenueDashboardSkeleton } from "@/components/tabPageSkeletons";
 
 const fadeUp = {
@@ -112,11 +111,6 @@ function toNumber(value: unknown, fallback = 0): number {
 
 export default function Revenue() {
   const { filter } = useGlobalDateFilter();
-  const reduxState = useAppSelector((state) => state);
-
-  useEffect(() => {
-    console.log("[Revenue] Redux state:", reduxState);
-  }, [reduxState]);
 
   const [custSort, setCustSort] = useState<{ key: CustomerSortKey; dir: SortDir }>({ key: "totalRevenue", dir: "desc" });
   const [revenueCounts, setRevenueCounts] = useState({

@@ -52,6 +52,7 @@ import {
   Building2,
   CircleOff,
   Link2,
+  Copy,
 } from "lucide-react";
 import { SendPaymentLinkDialog } from "@/components/customers/SendPaymentLinkDialog";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,14 @@ const planColors: Record<string, string> = {
   Enterprise: "bg-qiko-warning/10 text-qiko-warning",
   "N/A": "bg-muted/20 text-muted-foreground",
 };
+
+function getPlanBadgeClass(plan: string): string {
+  const normalized = plan.trim().toLowerCase();
+  if (normalized === "standard") return planColors.Standard;
+  if (normalized === "enterprise") return planColors.Enterprise;
+  if (normalized === "basic") return planColors.Basic;
+  return planColors["N/A"];
+}
 
 type SortKey =
   | "name"
@@ -135,7 +144,7 @@ const PLAN_TABS: Array<{
   },
 ];
 
-type DisplayPlan = "Basic" | "Standard" | "Enterprise" | "N/A";
+type DisplayPlan = string;
 type DisplayStatus = string;
 
 interface CustomerRow {
@@ -150,6 +159,7 @@ interface CustomerRow {
   joinedDate: string;
   contactEmail: string;
   industry: string;
+  paymentLink: string | null;
 }
 
 function fmt(n: number): string {
@@ -207,13 +217,10 @@ function extractCustomerArray(payload: CustomerListApiResponse): unknown[] {
 
 function getDisplayPlan(plan: unknown): DisplayPlan {
   if (plan === null || plan === undefined) return "N/A";
-  if (typeof plan !== "string") return "Basic";
+  if (typeof plan !== "string") return String(plan);
   const trimmed = plan.trim();
-  const normalized = trimmed.toLowerCase();
-  if (normalized === "" || normalized === "null") return "N/A";
-  if (normalized.includes("enterprise")) return "Enterprise";
-  if (normalized.includes("premium") || normalized.includes("business") || normalized.includes("growth")) return "Standard";
-  return "Basic";
+  if (trimmed === "" || trimmed.toLowerCase() === "null") return "N/A";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 }
 
 function getDisplayStatus(status: unknown): DisplayStatus {
@@ -275,6 +282,12 @@ function normalizeCustomer(item: unknown): CustomerRow {
     joinedDate: String(row.joined_date ?? row.joinedDate ?? row.created_at ?? row.createdAt ?? ""),
     contactEmail: String(row.user_email ?? row.email ?? row.contact_email ?? row.contactEmail ?? ""),
     industry: String(row.industry ?? ""),
+    paymentLink:
+      typeof row.payment_link === "string" && row.payment_link.trim().length > 0
+        ? row.payment_link.trim()
+        : typeof row.paymentLink === "string" && row.paymentLink.trim().length > 0
+          ? row.paymentLink.trim()
+          : null,
   };
 }
 
@@ -314,6 +327,27 @@ export default function Customers() {
   const [paymentLinkTarget, setPaymentLinkTarget] = useState<CustomerRow | null>(null);
 
   const showNoPlanPaymentLink = planType === "no_plan";
+
+  async function handleCopyPaymentLink(link: string) {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else if (typeof document !== "undefined") {
+        const textarea = document.createElement("textarea");
+        textarea.value = link;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      toast.success("Payment link copied.");
+    } catch {
+      toast.error("Failed to copy payment link.");
+    }
+  }
 
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
@@ -801,7 +835,7 @@ export default function Customers() {
                       <TableCell className="text-xs text-muted-foreground">{c.contactEmail || "—"}</TableCell>
 
                       <TableCell>
-                        <Badge variant="secondary" className={`text-[10px] border-0 ${planColors[c.plan] ?? planColors["N/A"]}`}>
+                        <Badge variant="secondary" className={`text-[10px] border-0 ${getPlanBadgeClass(c.plan)}`}>
                           {c.plan}
                         </Badge>
                       </TableCell>
@@ -836,16 +870,29 @@ export default function Customers() {
 
                       {showNoPlanPaymentLink && (
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs border-border/50"
-                            onClick={() => setPaymentLinkTarget(c)}
-                          >
-                            <Link2 className="size-3.5" />
-                            Send payment link
-                          </Button>
+                          {c.paymentLink ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs border-border/50"
+                              onClick={() => handleCopyPaymentLink(c.paymentLink as string)}
+                            >
+                              <Copy className="size-3.5" />
+                              Copy payment link
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs border-border/50"
+                              onClick={() => setPaymentLinkTarget(c)}
+                            >
+                              <Link2 className="size-3.5" />
+                              Send payment link
+                            </Button>
+                          )}
                         </TableCell>
                       )}
 

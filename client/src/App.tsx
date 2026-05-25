@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { GlobalDateFilterProvider } from "./contexts/DateFilterContext";
 import { Provider } from "react-redux";
 import { store } from "./store";
+import { useAppSelector } from "./store/hooks";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import DashboardLayout from "./components/DashboardLayout";
 import { lazy, Suspense, useEffect } from "react";
@@ -26,6 +27,16 @@ const Signup = lazy(() => import("./pages/Signup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const PasswordSet = lazy(() => import("./pages/PasswordSet"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+
+function ReduxStateLogger() {
+  const reduxState = useAppSelector((state) => state);
+
+  useEffect(() => {
+    console.log("[Redux] state:", reduxState);
+  }, [reduxState]);
+
+  return null;
+}
 
 function PageLoader() {
   return (
@@ -123,6 +134,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
         <Provider store={store}>
+          <ReduxStateLogger />
           <AuthProvider>
             <GlobalDateFilterProvider>
               <TooltipProvider>
